@@ -16,9 +16,12 @@ from dotenv import load_dotenv
 env_file = Path.home() / '.openclaw' / 'workspace' / '.env'
 load_dotenv(env_file)
 
-# Security News Module 경로 추가
-skill_path = Path(__file__).parent.parent / 'security-news-module'
+# Security News Module 경로 추가 (security-news-feed 사용)
+skill_path = Path(__file__).parent.parent.parent / 'security-news-feed'
 sys.path.insert(0, str(skill_path))
+
+import os
+os.chdir(str(skill_path))  # working directory 변경
 
 print("="*70)
 print("INTELLIGENCE AGENT - FULL PIPELINE")
