@@ -14,7 +14,7 @@ CURRENT_DIR = Path(__file__).resolve().parent
 
 # 환경 변수로 지정된 PROJECT_ROOT 사용 (우선)
 # 또는 절대 경로로 직접 설정
-PROJECT_ROOT = Path(os.getenv("OPENCLAW_ROOT", "/Users/nabang/Documents/OpenClaw"))
+PROJECT_ROOT = Path(os.getenv("OPENCLAW_ROOT", "/Users/rebugui/.openclaw/workspace"))
 
 # PROJECT_ROOT가 존재하는지 확인
 if not PROJECT_ROOT.exists():
@@ -36,10 +36,10 @@ BLOG_REPO_PATH_ENV = os.getenv("BLOG_REPO_PATH")
 if BLOG_REPO_PATH_ENV:
     BLOG_REPO_PATH = Path(BLOG_REPO_PATH_ENV)
 else:
-    BLOG_REPO_PATH = PROJECT_ROOT / "security-blog"
+    BLOG_REPO_PATH = PROJECT_ROOT / "blog"
 
 # 블로그 URL
-BLOG_URL = os.getenv("BLOG_URL", "https://rebugui.github.io/hate-coding-turtle/")
+BLOG_URL = os.getenv("BLOG_URL", "https://rebugui.github.io/")
 
 # 2. 환경 변수 로드
 # 프로젝트 루트의 .env 파일 우선적으로 로드

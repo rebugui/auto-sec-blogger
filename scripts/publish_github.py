@@ -18,35 +18,39 @@ print("="*70)
 class GitHubPagesPublisher:
     def __init__(self):
         self.blog_path = Path(os.getenv('BLOG_LOCAL_PATH', Path.home() / '.openclaw' / 'workspace' / 'blog'))
-        self.posts_dir = self.blog_path / '_posts'
+        self.posts_dir = self.blog_path / 'content' / 'post'
         self.github_token = os.getenv('GITHUB_TOKEN')
         self.github_repo = os.getenv('GITHUB_BLOG_REPO')
 
     def sanitize_filename(self, title):
         """파일명으로 사용 가능한 문자열로 변환"""
-        # 특수문자 제거 및 소문자 변환
-        filename = re.sub(r'[^\w\s-]', '', title.lower())
+        # 특수문자 제거
+        filename = re.sub(r'[^\w\s-]', '', title)
         # 공백을 하이픈으로 변환
         filename = re.sub(r'[\s]+', '-', filename)
         # 최대 길이 제한
         return filename[:100]
 
-    def create_jekyll_post(self, article):
-        """Jekyll 마크다운 포스트 생성"""
+    def create_hugo_post(self, article):
+        """Hugo 마크다운 포스트 생성"""
         date_str = article['posting_date'].strftime('%Y-%m-%d')
-        time_str = article['posting_date'].strftime('%H:%M:%S +0900')
+        time_str = article['posting_date'].strftime('%H:%M:%S')
         filename_slug = self.sanitize_filename(article['title'])
-        filename = f"{date_str}-{filename_slug}.md"
-        filepath = self.posts_dir / filename
+        
+        # Hugo content 구조: content/post/category/filename/index.md
+        category = article.get('category', 'security')
+        post_dir = self.posts_dir / category / filename_slug
+        post_dir.mkdir(parents=True, exist_ok=True)
+        filepath = post_dir / 'index.md'
 
-        # Jekyll Front Matter
+        # Hugo Front Matter
         front_matter = f"""---
-layout: post
 title: "{article['title']}"
-date: {date_str} {time_str}
-categories: {article.get('category', 'security').lower()}
+date: {date_str}T{time_str}+09:00
+draft: false
+categories: ["{category}"]
 tags: {self._extract_tags(article)}
-author: Intelligence Agent
+author: "Intelligence Agent"
 ---
 
 """
@@ -61,7 +65,7 @@ author: Intelligence Agent
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(front_matter + content + source)
 
-        return filename
+        return f"{category}/{filename_slug}/index.md"
 
     def _extract_tags(self, article):
         """태그 추출 (간단 버전)"""
@@ -143,14 +147,14 @@ def main():
     publisher = GitHubPagesPublisher()
 
     print("\n📝 샘플 포스트 생성 테스트...")
-    filename = publisher.create_jekyll_post(sample_article)
+    filename = publisher.create_hugo_post(sample_article)
     print(f"✅ 생성됨: {filename}")
 
     print("\n📂 블로그 경로:", publisher.blog_path)
-    print("📂 _posts 경로:", publisher.posts_dir)
+    print("📂 Posts 경로:", publisher.posts_dir)
 
     print("\n" + "="*70)
-    print("GitHub Pages Publisher 준비 완료")
+    print("GitHub Pages Publisher 준비 완료 (Hugo)")
     print("="*70)
 
 if __name__ == '__main__':
