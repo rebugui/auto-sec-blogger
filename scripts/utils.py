@@ -6,7 +6,7 @@ Utilities Module
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
-from modules.intelligence.config import LOG_DIR
+from config import LOG_DIR
 
 def setup_logger(name: str, log_file: str = None, level=logging.INFO) -> logging.Logger:
     """

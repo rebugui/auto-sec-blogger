@@ -21,7 +21,6 @@ skill_path = Path(__file__).parent.parent.parent / 'security-news-feed'
 sys.path.insert(0, str(skill_path))
 
 import os
-os.chdir(str(skill_path))  # working directory 변경
 
 print("="*70)
 print("INTELLIGENCE AGENT - FULL PIPELINE")

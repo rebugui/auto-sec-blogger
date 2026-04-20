@@ -9,13 +9,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load .env
-env_path = '/Users/nabang/Documents/OpenClaw/.env'
-load_dotenv(env_path, override=True)
+env_path = Path.home() / '.openclaw' / 'workspace' / '.env'
+load_dotenv(str(env_path), override=True)
 
 # Load NotionPublisher directly
+scripts_dir = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location(
     "notion_publisher",
-    "/Users/nabang/Documents/OpenClaw/modules/intelligence/notion_publisher.py"
+    str(scripts_dir / "notion_publisher.py")
 )
 notion_publisher_module = importlib.util.module_from_spec(spec)
 

@@ -9,11 +9,11 @@ import asyncio
 from typing import List, Dict, Optional
 from datetime import datetime
 from enum import Enum
-from modules.intelligence.config import GLM_API_KEY, GLM_BASE_URL, GLM_MODEL
-from modules.intelligence.llm_client_async import AsyncLLMClient
-from modules.intelligence.utils import setup_logger
-from modules.intelligence.prompt_manager import PromptManager
-from modules.intelligence.models import BlogPost
+from config import GLM_API_KEY, GLM_BASE_URL, GLM_MODEL
+from llm_client_async import AsyncLLMClient
+from utils import setup_logger
+from prompt_manager import PromptManager
+from models import BlogPost
 
 logger = setup_logger(__name__, "writer.log")
 

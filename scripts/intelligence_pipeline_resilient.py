@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Intelligence Agent - 전체 파이프라인 스크립트 (Async)
+Modified Intelligence Pipeline - Rate Limit Resilient
+arXiv rate limit 오류를 처리하기 위해 수정된 버전
 """
 
 import sys
@@ -13,22 +14,67 @@ from writer import BlogWriter
 from notion_publisher import NotionPublisher
 from selector import ArticleSelector
 
-logger = setup_logger(__name__, "pipeline.log")
+logger = setup_logger(__name__, "pipeline_resilient.log")
 
-async def run_pipeline_async(max_articles: int = 5):
-    logger.info("=== Intelligence Pipeline (Async) Started ===")
+async def run_pipeline_async_resilient(max_articles: int = 5):
+    logger.info("=== Intelligence Pipeline (Resilient) Started ===")
 
     try:
-        # 1. 뉴스 수집 (Collector)
-        # Collector는 동기식이므로 그대로 실행 (추후 비동기화 가능)
-        logger.info("[1/4] Collecting news from various sources...")
+        # 1. 뉴스 수집 (Collector) - 실패한 소스 건너뛰기
+        logger.info("[1/4] Collecting news from available sources...")
         collector = NewsCollector()
-        raw_articles = collector.fetch_all(max_results_per_source=15)
+        raw_articles = []
         
+        # Google News 수집
+        logger.info("  - Fetching Google News...")
+        try:
+            for keyword in ["Vulnerability", "Security", "Cybersecurity"]:
+                articles = collector.fetch_google_news(keyword, max_results_per_source=15)
+                raw_articles.extend(articles)
+            logger.info(f"  → Google News: {len(articles)} articles")
+        except Exception as e:
+            logger.error(f"  ❌ Google News failed: {e}")
+        
+        # arXiv 수집 (rate limit 시 건너뛰기)
+        logger.info("  - Fetching arXiv papers...")
+        try:
+            arxiv_articles = collector.fetch_arxiv(max_results=15)
+            raw_articles.extend(arxiv_articles)
+            logger.info(f"  → arXiv: {len(arxiv_articles)} articles")
+        except Exception as e:
+            logger.warning(f"  ⚠️ arXiv skipped due to rate limit: {e}")
+        
+        # HackerNews 수집
+        logger.info("  - Fetching HackerNews...")
+        try:
+            hn_articles = collector.fetch_hackernews(max_results=15)
+            raw_articles.extend(hn_articles)
+            logger.info(f"  → HackerNews: {len(hn_articles)} articles")
+        except Exception as e:
+            logger.error(f"  ❌ HackerNews failed: {e}")
+        
+        # Hada.io 수집
+        logger.info("  - Fetching Hada.io...")
+        try:
+            hada_articles = collector.fetch_hadaio(max_results=10)
+            raw_articles.extend(hada_articles)
+            logger.info(f"  → Hada.io: {len(hada_articles)} articles")
+        except Exception as e:
+            logger.error(f"  ❌ Hada.io failed: {e}")
+        
+        # Geeknews 수집
+        logger.info("  - Fetching Geeknews...")
+        try:
+            geek_articles = collector.fetch_geeknews(max_results=10)
+            raw_articles.extend(geek_articles)
+            logger.info(f"  → Geeknews: {len(geek_articles)} articles")
+        except Exception as e:
+            logger.error(f"  ❌ Geeknews failed: {e}")
+
         if not raw_articles:
-            logger.info("No new articles found. Terminating pipeline.")
+            logger.warning("No articles collected from any source. Terminating pipeline.")
             return
-        
+
         logger.info(f"Total candidates collected: {len(raw_articles)}")
 
         # 2. AI 기반 기사 선별 (Async Selector)
@@ -82,11 +128,11 @@ async def run_pipeline_async(max_articles: int = 5):
         raise
 
 def main():
-    parser = argparse.ArgumentParser(description='Intelligence Agent Pipeline (Async)')
+    parser = argparse.ArgumentParser(description='Intelligence Agent Pipeline (Resilient)')
     parser.add_argument('--max-articles', type=int, default=5, help='최종 생성할 블로그 글 수')
     args = parser.parse_args()
 
-    asyncio.run(run_pipeline_async(max_articles=args.max_articles))
+    asyncio.run(run_pipeline_async_resilient(max_articles=args.max_articles))
 
 if __name__ == "__main__":
     main()

@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Direct import to avoid package initialization issues
 import importlib.util
-spec = importlib.util.spec_from_file_location("notion_publisher", "/Users/nabang/Documents/OpenClaw/modules/intelligence/notion_publisher.py")
+scripts_dir = os.path.dirname(os.path.abspath(__file__))
+spec = importlib.util.spec_from_file_location("notion_publisher", os.path.join(scripts_dir, "notion_publisher.py"))
 notion_publisher_module = importlib.util.module_from_spec(spec)
 
 # Mock the config module to avoid import errors

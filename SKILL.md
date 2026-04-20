@@ -1,7 +1,7 @@
 ---
 name: auto-sec-blogger
 version: 1.1.0
-description: AI-powered security blog automation system (identical to github.com/rebugui/intelligence-agent). Collects news from Google News, arXiv, HackerNews → generates blog posts with GLM-4.7 → publishes to Notion → auto-deploys to GitHub Pages via Git. Features Human-in-the-Loop approval workflow. Use when you want to automate blog writing, news collection, or content generation with the exact functionality of the original intelligence-agent repository. Triggers: "블로그 글 작성", "보안 뉴스 발행", "깃헙 블로그 발행", "intelligence agent", "지능형 에이전트", "자동 글쓰기".
+description: AI-powered security blog automation system (identical to github.com/rebugui/auto-sec-blogger). Collects news from Google News, arXiv, HackerNews → generates blog posts with GLM-4.7 → publishes to Notion → auto-deploys to GitHub Pages via Git. Features Human-in-the-Loop approval workflow. Use when you want to automate blog writing, news collection, or content generation with the exact functionality of the original auto-sec-blogger repository. Triggers: "블로그 글 작성", "보안 뉴스 발행", "깃헙 블로그 발행", "intelligence agent", "지능형 에이전트", "자동 글쓰기".
 ---
 
 # Intelligence Agent
@@ -10,7 +10,7 @@ description: AI-powered security blog automation system (identical to github.com
 
 보안 뉴스를 자동으로 수집하고, LLM(GLM-4.7)을 사용하여 전문가 수준의 블로그 글을 작성한 후, Notion과 GitHub Pages에 자동으로 게시하는 시스템입니다.
 
-**GitHub 저장소와 동일**: https://github.com/rebugui/intelligence-agent
+**GitHub 저장소와 동일**: https://github.com/rebugui/auto-sec-blogger
 
 ## 아키텍처
 
@@ -52,7 +52,7 @@ Git Push → GitHub Actions → GitHub Pages
 
 ### 4. Git 기반 발행 (Git Publishing)
 - **자동 커밋**: 마크다운 파일 Git에 커밋
-- **GitHub Actions**: 자동 Jekyll 빌드
+- **Hugo 빌드**: 정적 블로그용 마크다운 생성
 - **GitHub Pages**: 정적 블로그 배포
 
 ## 설치
@@ -60,7 +60,7 @@ Git Push → GitHub Actions → GitHub Pages
 ### 1. 의존성 설치
 
 ```bash
-cd ~/.openclaw/workspace/skills/intelligence-agent/scripts
+cd ~/.openclaw/workspace/skills/auto-sec-blogger/scripts
 pip3 install -r requirements.txt
 ```
 
@@ -88,7 +88,7 @@ BLOG_LOCAL_PATH=/path/to/blog/repo
 ### 1. 전체 파이프라인 실행 (테스트용)
 
 ```bash
-cd ~/.openclaw/workspace/skills/intelligence-agent/scripts
+cd ~/.openclaw/workspace/skills/auto-sec-blogger/scripts
 python3 intelligence_pipeline.py --max-articles 5
 ```
 
@@ -220,21 +220,24 @@ scheduler.start()
 | URL | url | 원문 URL |
 | 카테고리 | select | 취약점/연구/트렌드 |
 
-## Jekyll 블로그 구조
+## Hugo 블로그 구조
 
 ```
 blog/
-├── _posts/
-│   ├── 2025-03-09-cve-2025-xxxx-analysis.md
-│   ├── 2025-03-09-ai-security-trends.md
-│   └── ...
-├── _layouts/
-│   ├── post.html
-│   └── default.html
-├── _config.yml
+├── content/
+│   └── post/
+│       ├── cve-2025-xxxx-analysis/
+│       │   └── index.md
+│       ├── ai-security-trends/
+│       │   └── index.md
+│       └── ...
+├── layouts/
+│   ├── _default/
+│   └── partials/
+├── config.toml (or hugo.toml)
 └── .github/
     └── workflows/
-        └── jekyll.yml
+        └── hugo.yml
 ```
 
 ## 트러블슈팅
@@ -274,27 +277,30 @@ blog/
 ## 파일 구조
 
 ```
-intelligence-agent/
+auto-sec-blogger/
 ├── SKILL.md (이 파일)
 ├── scripts/
-│   ├── intelligence_pipeline.py (메인 파이프라인)
-│   ├── collector.py (뉴스 수집)
+│   ├── intelligence_pipeline.py (메인 파이프라인, security-news-feed 의존)
+│   ├── run_pipeline.py (독립 async 파이프라인)
+│   ├── collector.py (뉴스 수집 - Google News, arXiv, HN, Hadaio)
 │   ├── selector.py (AI 기사 선별)
-│   ├── writer.py (블로그 글 작성)
+│   ├── writer.py (블로그 글 작성, 멀티 페르소나)
 │   ├── notion_publisher.py (Notion 발행)
-│   ├── git_publisher_service.py (Git 발행)
-│   ├── llm_client.py (GLM API 클라이언트)
+│   ├── publisher_git.py (Git 발행 - Hugo 포맷)
+│   ├── git_publisher_service.py (launchd 백그라운드 서비스)
+│   ├── auto_publish_approved.py (승인된 글 자동 발행)
+│   ├── publish_github.py (GitHub Pages 발행)
+│   ├── topic_analyzer.py (주제 그룹 분석)
+│   ├── llm_client.py (GLM API 동기 클라이언트)
 │   ├── llm_client_async.py (비동기 GLM 클라이언트)
 │   ├── prompt_manager.py (프롬프트 관리)
 │   ├── prompts.yaml (프롬프트 템플릿)
-│   ├── models.py (데이터 모델)
-│   ├── utils.py (유틸리티)
+│   ├── models.py (Pydantic 데이터 모델)
 │   ├── config.py (설정)
+│   ├── utils.py (유틸리티)
 │   └── requirements.txt (의존성)
 └── references/
-    ├── architecture.md (상세 아키텍처)
-    ├── prompts_guide.md (프롬프트 가이드)
-    └── api_reference.md (API 레퍼런스)
+    └── architecture.md (상세 아키텍처)
 ```
 
 ## 환경 변수
@@ -331,25 +337,23 @@ python3 test_mermaid_fix.py
 
 ## 참고자료
 
-- [GitHub 저장소](https://github.com/rebugui/intelligence-agent)
+- [GitHub 저장소](https://github.com/rebugui/auto-sec-blogger)
 - [GLM API 문서](https://open.bigmodel.cn/dev/api)
 - [Notion API 문서](https://developers.notion.com/)
-- [Jekyll 문서](https://jekyllrb.com/docs/)
+- [Hugo 문서](https://gohugo.io/documentation/)
 
 ## 리소스
 
 ### scripts/
-원본 저장소의 모든 Python 스크립트 포함:
-- `intelligence_pipeline.py` - 전체 파이프라인 실행
+모든 Python 스크립트 포함:
+- `intelligence_pipeline.py` - 전체 파이프라인 실행 (security-news-feed 크롤러 사용)
+- `run_pipeline.py` - 독립 async 파이프라인
 - `collector.py` - 뉴스 수집기
 - `selector.py` - AI 기사 선별
 - `writer.py` - 블로그 글 작성
 - `notion_publisher.py` - Notion 발행
-- `git_publisher_service.py` - Git 발행
-- `llm_client.py` - GLM API 클라이언트
-- `prompts.yaml` - 프롬프트 템플릿
+- `publisher_git.py` - Git 발행 (Hugo 포맷)
+- `auto_publish_approved.py` - 승인 글 자동 발행
 
 ### references/
 - `architecture.md` - 상세 아키텍처 설명
-- `prompts_guide.md` - 프롬프트 작성 가이드
-- `api_reference.md` - API 레퍼런스

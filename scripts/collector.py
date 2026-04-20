@@ -8,12 +8,14 @@ SQLite를 사용하여 수집 이력을 영구 저장하고 중복을 방지합�
 import feedparser
 import arxiv
 import sqlite3
+import threading
+import time
 from typing import List, Dict, Optional
 from datetime import datetime
 import re
 from urllib.parse import quote
-from modules.intelligence.config import DB_PATH
-from modules.intelligence.utils import setup_logger
+from config import DB_PATH
+from utils import setup_logger
 
 logger = setup_logger(__name__, "collector.log")
 
@@ -132,47 +134,66 @@ class NewsCollector:
             return []
 
     def fetch_arxiv(self, categories: List[str] = None, max_results: int = 10) -> List[Dict]:
-        """arXiv 논문 수집"""
+        """arXiv 논문 수집 (with 30-second timeout)"""
         logger.info("Fetching arXiv papers...")
         if categories is None:
             categories = ["cs.CR", "cs.LG", "cs.SE"]
 
-        try:
-            articles = []
-            search = arxiv.Search(
-                query="cat:cs.CR OR cat:cs.LG OR cat:cs.SE",
-                max_results=max_results,
-                sort_by=arxiv.SortCriterion.SubmittedDate
-            )
+        def fetch_with_timeout():
+            try:
+                articles = []
+                search = arxiv.Search(
+                    query="cat:cs.CR OR cat:cs.LG OR cat:cs.SE",
+                    max_results=max_results,
+                    sort_by=arxiv.SortCriterion.SubmittedDate
+                )
 
-            for result in search.results():
-                if self.is_seen(result.entry_id):
-                    continue
+                for result in search.results():
+                    if self.is_seen(result.entry_id):
+                        continue
 
-                # 키워드 필터링
-                title_lower = result.title.lower()
-                summary_lower = result.summary.lower()
-                if not any(keyword.lower() in title_lower or keyword.lower() in summary_lower
-                        for keyword in self.keywords):
-                    continue
+                    # 키워드 필터링
+                    title_lower = result.title.lower()
+                    summary_lower = result.summary.lower()
+                    if not any(keyword.lower() in title_lower or keyword.lower() in summary_lower
+                            for keyword in self.keywords):
+                        continue
 
-                article = {
-                    "source": "arXiv",
-                    "title": result.title,
-                    "url": result.entry_id,
-                    "published": result.published.strftime("%Y-%m-%d %H:%M:%S"),
-                    "summary": result.summary,
-                    "authors": [author.name for author in result.authors],
-                    "categories": result.categories
-                }
-                articles.append(article)
-                self.add_seen(result.entry_id)
+                    article = {
+                        "source": "arXiv",
+                        "title": result.title,
+                        "url": result.entry_id,
+                        "published": result.published.strftime("%Y-%m-%d %H:%M:%S"),
+                        "summary": result.summary,
+                        "authors": [author.name for author in result.authors],
+                        "categories": result.categories
+                    }
+                    articles.append(article)
+                    self.add_seen(result.entry_id)
 
-            logger.info(f"  → Found {len(articles)} new papers")
-            return articles
-        except Exception as e:
-            logger.error(f"Failed to fetch arXiv: {e}")
+                return articles
+            except Exception as e:
+                logger.error(f"Error during arXiv fetch: {e}")
+                return []
+
+        # Run with timeout
+        result = []
+        def target():
+            nonlocal result
+            result = fetch_with_timeout()
+        
+        thread = threading.Thread(target=target)
+        thread.daemon = True
+        thread.start()
+        thread.join(timeout=30)  # 30 second timeout
+        
+        if thread.is_alive():
+            logger.warning("ArXiv fetch timed out after 30 seconds")
             return []
+        
+        if result:
+            logger.info(f"  → Found {len(result)} new papers")
+        return result
 
     def fetch_hackernews(self, max_results: int = 10) -> List[Dict]:
         """HackerNews 수집"""
@@ -256,7 +277,16 @@ class NewsCollector:
         for keyword in self.keywords[:3]:
             all_articles.extend(self.fetch_google_news(keyword, max_results_per_source))
 
-        all_articles.extend(self.fetch_arxiv(max_results=max_results_per_source))
+        # Try arXiv fetch but continue even if it fails (with timeout handling)
+        try:
+            logger.info("Attempting arXiv fetch...")
+            arxiv_articles = self.fetch_arxiv(max_results=max_results_per_source)
+            all_articles.extend(arxiv_articles)
+            logger.info(f"ArXiv fetch succeeded: {len(arxiv_articles)} articles")
+        except Exception as e:
+            logger.warning(f"ArXiv fetch failed after timeout, continuing without it: {e}")
+            # Continue with other sources - arXiv is optional
+
         all_articles.extend(self.fetch_hackernews(max_results=max_results_per_source))
         all_articles.extend(self.fetch_hadaio(max_results=max_results_per_source))
         all_articles.extend(self.fetch_geeknews(max_results=max_results_per_source))

@@ -7,9 +7,9 @@ import re
 from typing import List, Dict, Optional
 from datetime import datetime
 from llm_client import GLMClient
-from modules.intelligence.writer import BlogWriter, Persona, CategoryClassifier, TagExtractor, PersonaConfig
-from modules.intelligence.config import GLM_API_KEY
-from modules.intelligence.utils import setup_logger
+from writer import BlogWriter, Persona, CategoryClassifier, TagExtractor, PersonaConfig
+from config import GLM_API_KEY
+from utils import setup_logger
 
 logger = setup_logger(__name__, "topic_analyzer.log")
 

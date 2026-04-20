@@ -59,8 +59,8 @@ def get_env(key: str, default: str = None) -> str:
 
 # API Keys (Intelligence Agent)
 OPENAI_API_KEY = get_env("INTELLIGENCE_OPENAI_API_KEY")
-GLM_API_KEY = get_env("INTELLIGENCE_LLM_API_KEY")
-NOTION_API_KEY = get_env("INTELLIGENCE_NOTION_TOKEN")
+GLM_API_KEY = get_env("INTELLIGENCE_LLM_API_KEY") or get_env("INTELLIGENCE_GLM_API_KEY") or get_env("GLM_API_KEY")
+NOTION_API_KEY = get_env("INTELLIGENCE_NOTION_TOKEN") or get_env("NOTION_API_KEY")
 
 # Blog Config
 BLOG_REPO_PATH = Path(get_env("BLOG_REPO_PATH", str(BLOG_REPO_PATH)))
@@ -77,4 +77,4 @@ PROJECT_DATABASE_ID = get_env("INTELLIGENCE_PROJECT_DATABASE_ID")
 
 # LLM Config
 GLM_BASE_URL = get_env("INTELLIGENCE_LLM_BASE_URL", "https://api.z.ai/api/coding/paas/v4/")
-GLM_MODEL = get_env("INTELLIGENCE_LLM_MODEL", "glm-5")
+GLM_MODEL = get_env("INTELLIGENCE_LLM_MODEL", "glm-4.7")

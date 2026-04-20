@@ -7,11 +7,11 @@ import re
 import asyncio
 from typing import List, Dict
 from collections import defaultdict
-from modules.intelligence.llm_client_async import AsyncLLMClient
-from modules.intelligence.writer import CategoryClassifier, Persona, PersonaConfig
-from modules.intelligence.utils import setup_logger
-from modules.intelligence.prompt_manager import PromptManager
-from modules.intelligence.models import EvaluationResponse
+from llm_client_async import AsyncLLMClient
+from writer import CategoryClassifier, Persona, PersonaConfig
+from utils import setup_logger
+from prompt_manager import PromptManager
+from models import EvaluationResponse
 
 logger = setup_logger(__name__, "selector.log")
 
@@ -90,7 +90,7 @@ class ArticleSelector:
         """AI 평가 (Pydantic 검증)"""
         if len(items) == 1:
              # Mock object for single item
-             from modules.intelligence.models import EvaluationItem
+             from models import EvaluationItem
              return [EvaluationItem(id=items[0]['_temp_id'], score=9, reason="Only article in category")]
 
         articles_text = ""

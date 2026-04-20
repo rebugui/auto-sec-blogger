@@ -14,14 +14,18 @@ from pathlib import Path
 from datetime import datetime
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / "submodules" / "intelligence-agent" / "src"))
+sys.path.insert(0, str(SCRIPTS_DIR))
+
+LOG_DIR = Path.home() / '.openclaw' / 'workspace' / 'logs'
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/Users/nabang/Documents/OpenClaw/logs/git-publisher-service.log'),
+        logging.FileHandler(str(LOG_DIR / 'git-publisher-service.log')),
         logging.StreamHandler()
     ]
 )

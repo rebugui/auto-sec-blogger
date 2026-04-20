@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 GitHub Pages 블로그 발행
-Jekyll 기반 정적 블로그에 마크다운 포스트 발행
+Hugo 기반 정적 블로그에 마크다운 포스트 발행
 """
 
 import os
@@ -122,7 +122,7 @@ author: "Intelligence Agent"
             print(f"  [{i}/{len(articles)}] {article['title'][:40]}...")
 
             try:
-                filename = self.create_jekyll_post(article)
+                filename = self.create_hugo_post(article)
                 filenames.append(filename)
                 print(f"    ✅ 생성: {filename}")
             except Exception as e:

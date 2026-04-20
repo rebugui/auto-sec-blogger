@@ -7,11 +7,12 @@ import requests
 import subprocess
 import tempfile
 import base64
+import re
 from pathlib import Path
 from typing import Dict, Optional, List
 from datetime import datetime
-from modules.intelligence.config import NOTION_API_KEY, NOTION_DATABASE_ID, BLOG_REPO_PATH, BLOG_URL
-from modules.intelligence.utils import setup_logger
+from config import NOTION_API_KEY, NOTION_DATABASE_ID, BLOG_REPO_PATH, BLOG_URL
+from utils import setup_logger
 
 logger = setup_logger(__name__, "notion_publisher.log")
 
@@ -60,7 +61,16 @@ class NotionPublisher:
         반환값: {'local_path': 로컬 경로, 'url': 블로그 URL}
         """
         try:
+            # None 값 체크
+            if not mermaid_code or not isinstance(mermaid_code, str):
+                logger.error("Invalid mermaid_code: must be non-empty string")
+                return None
+                
             # 이미지 저장 디렉토리 생성
+            if not self.blog_repo_path:
+                logger.error("blog_repo_path is not configured")
+                return None
+                
             images_dir = self.blog_repo_path / "static" / "images" / "mermaid"
             images_dir.mkdir(parents=True, exist_ok=True)
 
@@ -480,19 +490,20 @@ class NotionPublisher:
         if btype == 'image':
             image_data = block.get('image', {})
             image_type = image_data.get('type', '')
-
+            url = ''
+            
             if image_type == 'external':
                 url = image_data.get('external', {}).get('url', '')
-                if url:
-                    # 이미지가 있는 경우 마크다운 이미지로 변환
-                    # 캡션이나 alt 텍스트가 있다면 추가
-                    return f"\n![Mermaid Diagram]({url})\n"
             elif image_type == 'file':
                 url = image_data.get('file', {}).get('url', '')
-                if url:
-                    return f"\n![Mermaid Diagram]({url})\n"
-
-            return ""  # 이미지 처리 실패
+                
+            # URL이 None이 아니고 빈 문자열이 아니면 마크다운 이미지로 변환
+            if url and url != 'None':
+                # 캡션이나 alt 텍스트가 있다면 추가
+                return f"\n![Mermaid Diagram]({url})\n"
+            else:
+                logger.warning(f"Image URL is invalid: {url}")
+                return ""  # 이미지 처리 실패
 
         # 테이블 처리
         if btype == 'table':

@@ -10,9 +10,9 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from pathlib import Path
 
-from modules.intelligence.notion_publisher import NotionPublisher
-from modules.intelligence.config import BLOG_REPO_PATH, BLOG_URL, NOTION_API_KEY, NOTION_DATABASE_ID
-from modules.intelligence.utils import setup_logger
+from notion_publisher import NotionPublisher
+from config import BLOG_REPO_PATH, BLOG_URL, NOTION_API_KEY, NOTION_DATABASE_ID
+from utils import setup_logger
 
 logger = setup_logger(__name__, "publisher_git.log")
 
@@ -139,6 +139,10 @@ categories:
         subprocess.run(cmd, cwd=self.blog_repo_path, check=True, capture_output=True)
 
     def _git_push(self) -> None:
+        # Pull with rebase first to avoid conflicts
+        cmd = ['git', 'pull', '--rebase', 'origin', 'main']
+        subprocess.run(cmd, cwd=self.blog_repo_path, check=True, capture_output=True)
+        # Then push
         cmd = ['git', 'push', 'origin', 'main']
         subprocess.run(cmd, cwd=self.blog_repo_path, check=True, capture_output=True)
 

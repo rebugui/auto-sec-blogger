@@ -8,8 +8,8 @@ import aiohttp
 import asyncio
 import random
 from typing import Dict, Optional, Any
-from modules.intelligence.config import GLM_API_KEY, GLM_BASE_URL, GLM_MODEL
-from modules.intelligence.utils import setup_logger
+from config import GLM_API_KEY, GLM_BASE_URL, GLM_MODEL
+from utils import setup_logger
 
 logger = setup_logger(__name__, "llm_client_async.log")
 
@@ -62,7 +62,7 @@ class AsyncLLMClient:
                 {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 8000
+            "max_tokens": 4000
         }
 
         url = self._get_url()

@@ -7,8 +7,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from typing import Dict, List, Optional, Any
-from modules.intelligence.config import GLM_API_KEY, GLM_BASE_URL, GLM_MODEL
-from modules.intelligence.utils import setup_logger
+from config import GLM_API_KEY, GLM_BASE_URL, GLM_MODEL
+from utils import setup_logger
 
 logger = setup_logger(__name__, "llm_client.log")
 
