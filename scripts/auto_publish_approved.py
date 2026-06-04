@@ -68,7 +68,8 @@ def notion_request(url, method='GET', body=None):
 
 def extract_rich_text(block_data, key='rich_text'):
     """rich_text 배열에서 일반 텍스트 추출 (inline bold/italic/code/링크 유지)"""
-    parts = block_data.get(key, [])
+    # 이미지 caption 등은 rich_text 배열(list)이 직접 넘어오기도 함
+    parts = block_data if isinstance(block_data, list) else block_data.get(key, [])
     result = []
     for part in parts:
         text = part.get('plain_text', '')
