@@ -8,6 +8,9 @@ import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
+
+import requests
 
 from config import BLOG_REPO_PATH, BLOG_URL
 from utils import setup_logger
@@ -49,6 +52,45 @@ def post_exists(article: dict) -> bool:
     return (posts_dir / _norm_category(article["category"]) / slug / "index.md").exists()
 
 
+_IMG_MD = re.compile(r'!\[([^\]]*)\]\((https?://[^)\s]+)\)')
+_CT_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif",
+           "image/webp": ".webp", "image/svg+xml": ".svg", "image/bmp": ".bmp"}
+
+
+def _guess_ext(url: str, content_type: str) -> str:
+    path = urlparse(url).path.lower()
+    for e in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp"):
+        if path.endswith(e):
+            return ".jpg" if e == ".jpeg" else e
+    return _CT_EXT.get((content_type or "").split(";")[0].strip(), ".png")
+
+
+def _localize_images(markdown: str, post_dir: Path) -> str:
+    """본문의 원격 이미지(![](http...))를 다운로드해 <post_dir>/images/에 저장하고
+    마크다운을 로컬 상대경로(images/..)로 치환. Hugo 페이지 번들 리소스로 영구 보존.
+    (Notion 업로드 이미지의 임시 서명 URL이 만료되어 깨지는 문제 해결)
+    """
+    images_dir = post_dir / "images"
+    counter = [0]
+
+    def repl(m):
+        alt, url = m.group(1), m.group(2)
+        try:
+            r = requests.get(url, timeout=30)
+            r.raise_for_status()
+            counter[0] += 1
+            ext = _guess_ext(url, r.headers.get("content-type", ""))
+            images_dir.mkdir(parents=True, exist_ok=True)
+            fname = f"img_{counter[0]}{ext}"
+            (images_dir / fname).write_bytes(r.content)
+            return f"![{alt}](images/{fname})"
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"이미지 다운로드 실패, 원본 URL 유지: {url[:60]} ({e})")
+            return m.group(0)
+
+    return _IMG_MD.sub(repl, markdown)
+
+
 def _create_hugo_post(article: dict, markdown: str) -> str:
     """Hugo 포스트 파일 생성 → 저장소 기준 상대경로(content/post/...) 반환."""
     date_str = datetime.now().strftime("%Y-%m-%d")
@@ -58,6 +100,8 @@ def _create_hugo_post(article: dict, markdown: str) -> str:
 
     post_dir = posts_dir / category / slug
     post_dir.mkdir(parents=True, exist_ok=True)
+    # 원격/Notion 이미지를 번들 내 images/로 다운로드 + 경로 치환
+    markdown = _localize_images(markdown, post_dir)
     filepath = post_dir / "index.md"
 
     front_matter = (
@@ -83,7 +127,8 @@ def _git(args: list) -> None:
 
 
 def _commit_and_push(rel_path: str, title: str) -> None:
-    _git(["add", rel_path])
+    # 번들 디렉터리째 add → index.md + images/ 모두 포함
+    _git(["add", str(Path(rel_path).parent)])
     _git(["commit", "-m", f"feat: 블로그 글 추가 - {title[:50]} ({datetime.now():%Y-%m-%d %H:%M})"])
     _git(["pull", "--rebase", "origin", "main"])
     _git(["push", "origin", "main"])
