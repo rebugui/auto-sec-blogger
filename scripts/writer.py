@@ -196,26 +196,19 @@ class BlogWriter:
             body += f"\n\n**출처**: [{src}]({src})"
         return body
 
-    # 유효한 Mermaid 다이어그램 헤더 (없으면 깨진 블록으로 간주)
-    _MERMAID_TYPES = ("graph", "flowchart", "sequenceDiagram", "classDiagram",
-                      "stateDiagram", "erDiagram", "gantt", "pie", "journey",
-                      "gitGraph", "mindmap", "timeline")
-
     def _sanitize_mermaid(self, content: str) -> str:
-        """Mermaid 블록 후처리: 금지된 스타일 라인 제거, 헤더 없으면 블록 삭제.
+        """Mermaid 블록 후처리: 금지된 스타일 라인 제거 후, 공용 새니타이저로
+        괄호 라벨 따옴표·기형 엣지·placeholder·비-다이어그램(코드펜스 강등)을 교정.
         (깨진 다이어그램 하나가 Hugo 페이지 전체를 깨뜨리는 것 방지)
         """
-        def _fix(m):
+        def _strip(m):
             lines = [ln for ln in m.group(1).splitlines()
                      if not re.match(r'\s*(style|classDef|class)\s', ln)
                      and 'fill:' not in ln and 'stroke:' not in ln]
-            cleaned = "\n".join(lines).strip()
-            first = next((ln.strip() for ln in cleaned.splitlines() if ln.strip()), "")
-            if not first.startswith(self._MERMAID_TYPES):
-                logger.warning("유효하지 않은 Mermaid 블록 제거")
-                return ""
-            return f"```mermaid\n{cleaned}\n```"
-        return re.sub(r"```mermaid\s*\n(.*?)\n```", _fix, content, flags=re.DOTALL)
+            return "```mermaid\n" + "\n".join(lines).strip() + "\n```"
+        content = re.sub(r"```mermaid\s*\n(.*?)\n```", _strip, content, flags=re.DOTALL)
+        from md_readability import sanitize_mermaid
+        return sanitize_mermaid(content)
 
     def _parse_metadata_response(self, response: str, category: str):
         """메타데이터 JSON 응답 파싱 (실패 시 None 반환 — 호출부에서 폴백)."""
