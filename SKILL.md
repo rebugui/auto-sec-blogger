@@ -43,8 +43,10 @@ Notion 상태 → 게시 완료
   | `timeout` | 600s | 로컬 8B는 호출당 30~40s, 긴 본문은 그 이상 |
   | `max_tokens` | 8000 | thinking + JSON/본문 충분 확보 |
   | `json_mode` | 옵션 | `response_format=json_object` 강제(평가 호출에서 사용) |
+  | `thinking` | `{"type":"disabled"}` | ⚠️ gemma4는 기본 thinking 모드로 토큰을 전부 소비 → 명시적 비활성화 필수 |
 
 - **API 키**: 불필요하나 비어있으면 ValueError → `INTELLIGENCE_LLM_API_KEY=ollama`(기본값) 유지.
+- **gemma4 thinking 모드**: gemma4:e4b는 `thinking` capability를 기본 활성화. 비활성화하지 않으면 모든 `max_tokens`를 내부 추론에 소비하고 실제 응답이 비어서 모든 기사가 0점 처리됨. `llm_client_async.py`에 `"thinking": {"type": "disabled"}` 추가가 반드시 필요.
 
 ## Hermes Cron (스케줄러)
 
@@ -158,6 +160,8 @@ AUTO_PUBLISH_MAX=5
 6. **arXiv 429**: 일시적 IP rate-limit. arXiv는 선택 소스이므로 실패해도 파이프라인 계속.
 7. **Pydantic score는 float**: `models.py` `EvaluationItem.score`는 `float`(Gemma가 8.5 같은 값 반환). `int`로 되돌리면 검증 실패로 항목이 떨어짐.
 8. **cron 실패 진단 순서**: ① `~/.hermes/cron/jobs.json`의 `last_status`/`last_error` → ② `~/.hermes/cron/output/<job_id>/<date>.md` 스크립트 종료/타임아웃 → ③ `logs/pipeline.log` 단계 추적 → ④ `logs/selector.log`·`writer.log` → ⑤ 래퍼 수동 재현.
+9. **gemma4 thinking 모드로 모든 기사 0점**: `selector.log`에 `Failed to score articles` → `Skipped ... (Score: 0 < 6)`가 연속되고 최종 `No articles passed`로 종료되면 thinking 모드 의심. 증상: Ollama 호출은 성공(타임아웃 아님)하지만 응답 content가 비어있고 finish_reason이 `length`. 해결: `llm_client_async.py` payload에 `"thinking": {"type": "disabled"}` 추가 + `max_tokens` 충분히 확보(8000). thinking 비활성화 전/후 테스트는 단일 curl로 확인 가능: `curl -s http://localhost:11434/v1/chat/completions -d '{"model":"gemma4:e4b","messages":[{"role":"user","content":"Say hi only"}],"max_tokens":20,"thinking":{"type":"disabled"}}'` → 응답에 content가 있으면 성공.
+10. **절대 DeepSeek/클라우드 API로 전환하지 말 것**: 사용자가 Ollama 로컬 무료 사용을 명시적으로 선호. 비용 발생 API(DeepSeek, OpenAI 등)로의 전환은 금지. Ollama가 느려도 `cron.script_timeout_seconds`(1800) 내에 완료되도록 유지하고, 필요한 경우 `max_articles`를 줄일 것.
 9. **jobs.json 인라인 `prompt`는 미사용**: 실행은 `script`(run-auto-sec-blogger.sh) 기준. 래퍼만 수정하면 됨.
 
 ## 파일 구조

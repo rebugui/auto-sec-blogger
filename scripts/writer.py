@@ -131,12 +131,25 @@ class BlogWriter:
                                       summary=article_data.get('summary', 'N/A'),
                                       category=category)
 
+        meta = None
         try:
-            response = await self.client.chat(system_prompt, user_prompt)
-            return self._parse_metadata_response(response, category)
+            response = await self.client.chat(system_prompt, user_prompt, json_mode=True)
+            meta = self._parse_metadata_response(response, category)
         except Exception as e:
-            logger.error(f"Failed to generate metadata: {e}")
-            raise
+            logger.error(f"메타데이터 생성 호출 실패: {e}")
+        # 파싱/호출 실패 시에도 글 전체를 죽이지 않고 원문 기반으로 폴백
+        if not meta:
+            logger.warning("메타데이터 파싱 실패 → 원문 기반 폴백 사용")
+            persona = CategoryClassifier.classify(article_data)
+            meta = self._metadata_fallback(article_data, persona, category)
+        return meta
+
+    def _metadata_fallback(self, article_data: Dict, persona: Persona, category: str) -> Dict:
+        """메타데이터 생성 실패 시 원문에서 최소 메타데이터 구성."""
+        title = (article_data.get('title') or '제목 없음').strip()[:60]
+        summary = (article_data.get('summary') or title).strip()[:300]
+        tags = TagExtractor.extract_tags(article_data, persona)
+        return {"title": title, "summary": summary, "tags": tags, "category": category}
 
     async def _generate_content(self, article_data: Dict, metadata: Dict, persona: Persona, config: Dict) -> str:
         """2단계: 본문 생성 (순수 Markdown)"""
@@ -155,62 +168,88 @@ class BlogWriter:
                                       url=article_data.get('url', 'N/A'),
                                       original_summary=article_data.get('summary', 'N/A'))
 
+        # 기술 본문은 환각·산만 억제를 위해 낮은 온도 사용
         try:
-            response = await self.client.chat(system_prompt, user_prompt)
-            # 본문은 순수 마크다운이므로 그대로 사용 (앞뒤 공백 제거)
-            content = response.strip()
-            # 최소 길이 체크
+            response = await self.client.chat(system_prompt, user_prompt, temperature=0.45)
+            content = self._clean_markdown(self._sanitize_mermaid(response.strip()))
+            if len(content) < 300:
+                logger.warning(f"본문 과소({len(content)}자) → 폴백 사용")
+                return self._content_fallback(article_data, metadata)
             if len(content) < 1000:
-                logger.warning(f"Generated content too short ({len(content)} chars), may need regeneration")
+                logger.warning(f"본문 다소 짧음({len(content)}자)")
             return content
         except Exception as e:
-            logger.error(f"Failed to generate content: {e}")
-            raise
+            logger.error(f"본문 생성 실패: {e} → 폴백 사용")
+            return self._content_fallback(article_data, metadata)
 
-    def _parse_metadata_response(self, response: str, category: str) -> Dict:
-        """메타데이터 JSON 응답 파싱"""
+    def _clean_markdown(self, content: str) -> str:
+        """가벼운 마크다운 정리: 중복 헤딩 마커('### ## 서론' → '## 서론') 정규화."""
+        return re.sub(r'(?m)^#{1,6}[ \t]+(#{1,6})[ \t]+', r'\1 ', content)
+
+    def _content_fallback(self, article_data: Dict, metadata: Dict) -> str:
+        """본문 생성 실패 시 요약 기반 최소 본문(글 전체 실패 방지)."""
+        src = article_data.get('url', '') or ''
+        body = (f"## 개요\n\n{metadata.get('summary', '')}\n\n"
+                f"## 핵심\n\n- 원문 주제: {article_data.get('title', '')}\n\n"
+                f"---\n\n> 자동 본문 생성에 실패하여 요약만 게시합니다. 원문을 참고하세요.")
+        if src:
+            body += f"\n\n**출처**: [{src}]({src})"
+        return body
+
+    # 유효한 Mermaid 다이어그램 헤더 (없으면 깨진 블록으로 간주)
+    _MERMAID_TYPES = ("graph", "flowchart", "sequenceDiagram", "classDiagram",
+                      "stateDiagram", "erDiagram", "gantt", "pie", "journey",
+                      "gitGraph", "mindmap", "timeline")
+
+    def _sanitize_mermaid(self, content: str) -> str:
+        """Mermaid 블록 후처리: 금지된 스타일 라인 제거, 헤더 없으면 블록 삭제.
+        (깨진 다이어그램 하나가 Hugo 페이지 전체를 깨뜨리는 것 방지)
+        """
+        def _fix(m):
+            lines = [ln for ln in m.group(1).splitlines()
+                     if not re.match(r'\s*(style|classDef|class)\s', ln)
+                     and 'fill:' not in ln and 'stroke:' not in ln]
+            cleaned = "\n".join(lines).strip()
+            first = next((ln.strip() for ln in cleaned.splitlines() if ln.strip()), "")
+            if not first.startswith(self._MERMAID_TYPES):
+                logger.warning("유효하지 않은 Mermaid 블록 제거")
+                return ""
+            return f"```mermaid\n{cleaned}\n```"
+        return re.sub(r"```mermaid\s*\n(.*?)\n```", _fix, content, flags=re.DOTALL)
+
+    def _parse_metadata_response(self, response: str, category: str):
+        """메타데이터 JSON 응답 파싱 (실패 시 None 반환 — 호출부에서 폴백)."""
+        if not response:
+            return None
+        import json as json_lib
+        json_match = re.search(r'```json\s*(\{.*?\})\s*```', response, re.DOTALL)
+        json_str = json_match.group(1) if json_match else response
+        if '{' in json_str and '}' in json_str:
+            json_str = json_str[json_str.find('{'):json_str.rfind('}') + 1]
+
+        data = None
         try:
-            # JSON 코드 블록 추출
-            json_match = re.search(r'```json\s*(\{.*?\})\s*```', response, re.DOTALL)
-            json_str = json_match.group(1) if json_match else response
-
-            # JSON 범위 추출
-            if '{' in json_str:
-                start = json_str.find('{')
-                brace_count = 0
-                end = start
-                for i in range(start, len(json_str)):
-                    if json_str[i] == '{':
-                        brace_count += 1
-                    elif json_str[i] == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            end = i + 1
-                            break
-                json_str = json_str[start:end]
-
-            # JSON 파싱
-            import json as json_lib
             data = json_lib.loads(json_str)
+        except Exception:
+            # 복구: 필드 단위 정규식 추출 (truncation 내성)
+            t = re.search(r'"title"\s*:\s*"((?:[^"\\]|\\.)*)"', json_str)
+            s = re.search(r'"summary"\s*:\s*"((?:[^"\\]|\\.)*)"', json_str)
+            tags = []
+            tm = re.search(r'"tags"\s*:\s*\[([^\]]*)', json_str, re.DOTALL)  # 닫는 ] 없어도 회수
+            if tm:
+                tags = re.findall(r'"([^"]+)"', tm.group(1))
+            if t:
+                data = {"title": t.group(1), "summary": s.group(1) if s else "", "tags": tags}
 
-            # 필수 필드 검증
-            if not data.get('title'):
-                raise ValueError("Missing 'title' field")
-            if not data.get('summary'):
-                raise ValueError("Missing 'summary' field")
-            if not data.get('tags'):
-                raise ValueError("Missing 'tags' field")
-
-            return {
-                "title": data['title'],
-                "summary": data['summary'],
-                "tags": data['tags'],
-                "category": data.get('category', category)
-            }
-        except Exception as e:
-            logger.error(f"Failed to parse metadata JSON: {e}")
-            logger.error(f"Response: {response[:500]}")
-            raise
+        if not data or not data.get('title'):
+            logger.error(f"메타데이터 파싱 실패. 응답: {response[:300]}")
+            return None
+        return {
+            "title": data['title'],
+            "summary": data.get('summary') or data['title'],
+            "tags": data.get('tags') or [],
+            "category": data.get('category', category),
+        }
 
     async def generate_article_batch(self, articles: List[Dict]) -> List[Dict]:
         """여러 기사 병렬 생성"""

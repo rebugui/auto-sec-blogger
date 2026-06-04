@@ -47,11 +47,13 @@ class AsyncLLMClient:
         delay = min(self.BASE_DELAY * (2 ** attempt) + random.uniform(0, 1), self.MAX_DELAY)
         return delay
 
-    async def chat(self, system_prompt: str, user_prompt: str, json_mode: bool = False) -> str:
+    async def chat(self, system_prompt: str, user_prompt: str, json_mode: bool = False,
+                   temperature: float = None) -> str:
         """GLM API 비동기 호출 (재시도 로직 포함)
 
         json_mode=True 시 OpenAI 호환 response_format으로 유효한 JSON 출력을 강제.
         (Ollama 제약 디코딩 → thinking 토큰/마크다운 혼입 및 truncation 파싱 실패 방지)
+        temperature: 호출별 온도(미지정 시 0.7). 기술 본문은 낮게(0.4~0.5) 권장.
         """
         if not self.api_key:
             raise ValueError("API Key가 설정되지 않았습니다.")
@@ -68,7 +70,7 @@ class AsyncLLMClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            "temperature": 0.7,
+            "temperature": 0.7 if temperature is None else temperature,
             "max_tokens": self.max_tokens,
             "thinking": {"type": "disabled"}
         }
