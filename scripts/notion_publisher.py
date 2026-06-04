@@ -139,7 +139,8 @@ class NotionPublisher:
         # Properties
         properties = {
             "내용": {"title": [{"text": {"content": title}}]},
-            "URL": {"url": article_data.get('original_url')},
+            # Notion URL 속성은 빈 문자열 거부 → 없으면 null (오리지널 글은 출처 URL 없음)
+            "URL": {"url": (article_data.get('original_url') or None)},
             "상태": {"status": {"name": "초안 작성중"}},
         }
 

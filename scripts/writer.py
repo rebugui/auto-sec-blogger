@@ -251,6 +251,56 @@ class BlogWriter:
             "category": data.get('category', category),
         }
 
+    # 카테고리 → 페르소나 (오리지널 딥다이브 생성용)
+    _CAT_PERSONA = {
+        "보안": Persona.SECURITY, "AI": Persona.AI_ML,
+        "DevOps": Persona.DEVOPS, "CVE": Persona.CVE_ANALYST,
+    }
+
+    async def generate_original(self, topic: str, category: str = "보안") -> Dict:
+        """뉴스에 매이지 않는 에버그린 오리지널 심층 글 생성 (토픽 기반)."""
+        persona = self._CAT_PERSONA.get(category, Persona.SECURITY)
+        config = PersonaConfig.get(persona)
+        logger.info(f"[Original] 생성: {topic[:50]} ({category})")
+        meta = await self._gen_original_meta(topic, config, category)
+        body = await self._gen_original_body(topic, meta, config)
+        return {
+            "title": meta["title"], "summary": meta["summary"], "content": body,
+            "tags": meta["tags"], "category": category, "persona": persona.value,
+            "original_url": "", "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+    async def _gen_original_meta(self, topic: str, config: Dict, category: str) -> Dict:
+        sysp = PromptManager.get("writer_original_meta.base_system", name=config['name'],
+                                 expertise=config['expertise'], tone=config['tone'],
+                                 persona_specific=config.get('specific_prompt', ''))
+        usrp = PromptManager.get("writer_original_meta.user", topic=topic, category=category)
+        meta = None
+        try:
+            r = await self.client.chat(sysp, usrp, json_mode=True)
+            meta = self._parse_metadata_response(r, category)
+        except Exception as e:
+            logger.error(f"오리지널 메타 생성 실패: {e}")
+        if not meta:
+            meta = {"title": topic[:60], "summary": topic, "tags": [category], "category": category}
+        return meta
+
+    async def _gen_original_body(self, topic: str, meta: Dict, config: Dict) -> str:
+        sysp = PromptManager.get("writer_original_body.base_system", name=config['name'],
+                                 expertise=config['expertise'], tone=config['tone'],
+                                 persona_specific=config.get('specific_prompt', ''))
+        usrp = PromptManager.get("writer_original_body.user", title=meta['title'],
+                                 summary=meta['summary'], tags=", ".join(meta['tags']), topic=topic)
+        try:
+            r = await self.client.chat(sysp, usrp, temperature=0.5)
+            content = self._clean_markdown(self._sanitize_mermaid(r.strip()))
+            if len(content) < 300:
+                return self._content_fallback({"title": meta['title'], "url": ""}, meta)
+            return content
+        except Exception as e:
+            logger.error(f"오리지널 본문 생성 실패: {e}")
+            return self._content_fallback({"title": meta['title'], "url": ""}, meta)
+
     async def generate_article_batch(self, articles: List[Dict]) -> List[Dict]:
         """여러 기사 병렬 생성"""
         tasks = [self.generate_article(article) for article in articles]
