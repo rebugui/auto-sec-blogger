@@ -15,6 +15,7 @@ import requests
 from config import BLOG_REPO_PATH, BLOG_URL
 from utils import setup_logger
 from publisher_base import PublishResult, PLATFORM_GITHUB
+import md_readability
 
 logger = setup_logger(__name__, "auto-publish-approved.log")
 
@@ -100,6 +101,8 @@ def _create_hugo_post(article: dict, markdown: str) -> str:
 
     post_dir = posts_dir / category / slug
     post_dir.mkdir(parents=True, exist_ok=True)
+    # Notion 왕복으로 한 줄에 뭉친 표/번호목록 복구 (goldmark 렌더 가능하게)
+    markdown = md_readability.restore(markdown)
     # 원격/Notion 이미지를 번들 내 images/로 다운로드 + 경로 치환
     markdown = _localize_images(markdown, post_dir)
     filepath = post_dir / "index.md"
