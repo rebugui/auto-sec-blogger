@@ -1,7 +1,7 @@
 ---
 name: auto-sec-blogger
-version: 2.1.0
-description: "AI-powered security/tech blog automation (identical to github.com/rebugui/auto-sec-blogger). Collects news from Google News, arXiv, HackerNews, Hada.io → evaluates & writes expert blog posts with LOCAL Ollama Gemma (gemma4:e4b, no cloud API) → saves Notion drafts → human approves in Notion → multi-platform publish to GitHub Pages (Hugo via Git), Naver Blog & Tistory (Playwright browser automation) chosen per-article via Notion '플랫폼' multi-select. Human-in-the-Loop approval workflow. Use to automate blog writing, security news curation, or content generation. Triggers: 블로그 글 작성, 보안 뉴스 발행, 깃헙 블로그 발행, 네이버 블로그 발행, 티스토리 발행, intelligence agent, 지능형 에이전트, 자동 글쓰기."
+version: 2.2.0
+description: "AI-powered security/tech blog automation (identical to github.com/rebugui/auto-sec-blogger). Collects news from Google News, arXiv, HackerNews, Hada.io → evaluates & writes expert blog posts with LOCAL Ollama Gemma (gemma4:e4b, no cloud API) → saves Notion drafts → human approves in Notion → auto-publishes approved posts to GitHub Pages (Hugo) via Git. Human-in-the-Loop approval workflow. Use to automate blog writing, security news curation, or content generation. Triggers: 블로그 글 작성, 보안 뉴스 발행, 깃헙 블로그 발행, intelligence agent, 지능형 에이전트, 자동 글쓰기."
 ---
 
 # Auto Sec Blogger (Intelligence Agent)
@@ -100,15 +100,12 @@ AUTO_PUBLISH_MAX=1 python3 scripts/auto_publish_approved.py  # 1건만 발행 �
 - `create_article`: 상태 `초안 작성중`으로 생성 후 `검토중`으로 갱신
 - 사람이 `검토 완료`로 승인 → `auto_publish`가 발행 후 `게시 완료`로 전환
 
-### 멀티플랫폼 발행 (`auto_publish_approved.py` 디스패처)
-- Notion에서 `AUTO_PUBLISH_STATUS`(기본 `검토 완료`) 글 조회
-- 글마다 `플랫폼`(multi-select)에서 고른 대상에만 발행. **비면 건너뜀.** 본문은 한 번 받아 `content_html.to_html`로 HTML화(Mermaid→mermaid.ink 이미지)
-- 퍼블리셔(공통 시그니처 `publish(article, markdown, html)->PublishResult`):
-  - `publisher_github.py`: 마크다운→Hugo `content/post/<카테고리>/<slug>/index.md` → 글당 `git push origin main`
-  - `publisher_naver.py` / `publisher_tistory.py`: **Playwright 브라우저 자동화**(저장 세션 재사용, `browser_session.py`). best-effort
-- 중복 방지: 성공 플랫폼을 `게시된 플랫폼`(multi-select)에 기록 → 재실행 시 건너뜀. 요청 전부 성공 시에만 상태 `게시 완료`(부분 실패는 다음 run 재시도)
+### Git 발행 (`auto_publish_approved.py` → `publisher_github.py`)
+- Notion에서 `AUTO_PUBLISH_STATUS`(기본 `검토 완료`) 글 조회 → 본문 마크다운 변환
+- `publisher_github.publish`: 마크다운→Hugo `content/post/<카테고리>/<slug>/index.md` → 글당 `git push origin main`
+- 성공 시 `게시된 플랫폼`(multi-select)에 `GitHub` 기록 → 중복 방지, 상태 `게시 완료`
 - 경로 `config.BLOG_REPO_PATH`, DB는 파이프라인과 동일, 1회 상한 `AUTO_PUBLISH_MAX`(기본 5)
-- 일회성 세션 캡처: `python3 scripts/publisher_naver.py login` / `publisher_tistory.py login`
+- **GitHub Pages만 지원.** 네이버/티스토리는 캡차(네이버 자동등록방지 / 티스토리 DKAPTCHA 지도 캡차)로 봇 발행 차단 → 자동화 불가로 제외.
 
 ## Notion 데이터베이스 스키마
 
@@ -171,15 +168,15 @@ auto-sec-blogger/
 ├── .gitignore
 ├── scripts/
 │   ├── intelligence_pipeline.py        # 메인 파이프라인(async)
-│   ├── intelligence_pipeline_resilient.py
 │   ├── collector.py                    # 수집 (Google News/arXiv/HN/Hada.io)
 │   ├── selector.py                     # AI 평가/선별 (청크+복구 파싱)
 │   ├── writer.py                       # 글 작성 (멀티 페르소나)
 │   ├── notion_publisher.py             # Notion 초안 발행
-│   ├── auto_publish_approved.py        # 승인 글 → Hugo → git push
-│   ├── llm_client_async.py / llm_client.py
+│   ├── auto_publish_approved.py        # 승인 글 → 발행 디스패치
+│   ├── publisher_github.py · publisher_base.py   # GitHub(Hugo) 퍼블리셔
+│   ├── llm_client_async.py             # Ollama 비동기 클라이언트
 │   ├── prompt_manager.py / prompts.yaml
-│   ├── models.py · config.py · utils.py · topic_analyzer.py
+│   ├── models.py · config.py · utils.py
 │   └── requirements.txt
 └── references/
     ├── architecture.md

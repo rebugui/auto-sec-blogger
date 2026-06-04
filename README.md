@@ -64,17 +64,13 @@ Notion 상태 → 게시 완료
 - 상태 관리: `초안 작성중` → `검토중` → (사람) `검토 완료` → `게시 완료`
 - 속성: 내용(제목)/상태/카테고리/태그
 
-### 5. 멀티플랫폼 발행 (`auto_publish_approved.py`)
+### 5. Git 발행 (`auto_publish_approved.py` → `publisher_github.py`)
 - Notion에서 `검토 완료`(또는 `AUTO_PUBLISH_STATUS`) 글을 조회
-- **글마다 Notion `플랫폼`(multi-select)에서 고른 대상에만 발행** (한 개 선택→한 곳, 두 개→두 곳). 비어있으면 발행하지 않음.
-- 플랫폼별 퍼블리셔:
-  - **GitHub** (`publisher_github.py`): 마크다운 → Hugo `content/post/<카테고리>/<slug>/index.md` 생성 → `git push origin main` → Actions 빌드·배포
-  - **Naver / Tistory** (`publisher_naver.py` / `publisher_tistory.py`): Playwright 브라우저 자동화(저장된 로그인 세션 재사용). 본문은 `content_html.py`로 HTML 변환(Mermaid는 mermaid.ink 이미지로)
-- **중복 방지**: 발행 성공 플랫폼을 Notion `게시된 플랫폼`(multi-select)에 기록 → 재실행 시 이미 게시된 플랫폼은 건너뜀(부분 실패 시 다음 run에서 실패분만 재시도)
-- 요청한 모든 플랫폼 게시 성공 시에만 상태를 `게시 완료`로 전환
+- Notion 본문 → 마크다운 변환 → Hugo `content/post/<카테고리>/<slug>/index.md` 생성 → `git push origin main` → GitHub Actions가 Hugo 빌드·배포
+- 발행 성공 시 Notion `게시된 플랫폼`(multi-select)에 `GitHub` 기록 → 재실행 시 중복 발행 방지, 상태 `게시 완료` 전환
 - 1회 발행 상한 `AUTO_PUBLISH_MAX`(기본 5)
 
-> Naver/Tistory는 공식 API 제약(네이버)·종료(티스토리, 2024.2)로 **브라우저 자동화**를 사용한다. 일회성 로그인 세션 캡처가 필요하며, 플랫폼 에디터 UI 변경에 취약한 best-effort 방식이다.
+> **발행 대상은 GitHub Pages(Hugo)만 지원한다.** 네이버 블로그/티스토리 자동 발행도 검토했으나, 두 플랫폼 모두 글쓰기 시 캡차(네이버 자동등록방지 / 티스토리 DKAPTCHA 지도 캡차)로 봇 발행을 차단하여 자동화가 불가능해 제외했다.
 
 ## 설치
 
@@ -107,26 +103,6 @@ INTELLIGENCE_LLM_MODEL=gemma4:e4b                     # 기본값
 BLOG_URL=https://rebugui.github.io/
 AUTO_PUBLISH_STATUS=검토 완료    # '검토중'으로 바꾸면 완전 자동발행
 AUTO_PUBLISH_MAX=5               # 1회 발행 상한
-
-# 멀티플랫폼 (네이버/티스토리 = Playwright 브라우저 자동화)
-NAVER_BLOG_ID=your_naver_id            # blog.naver.com/<id>
-TISTORY_BLOG_NAME=your_tistory_name    # <name>.tistory.com
-# 세션 저장 경로(기본 data/ 하위). 직접 지정 가능:
-# NAVER_STATE_PATH=.../naver_state.json
-# TISTORY_STATE_PATH=.../tistory_state.json
-```
-
-### 멀티플랫폼 일회성 셋업
-```bash
-# 1) Notion DB에 '플랫폼'/'게시된 플랫폼' multi-select 속성 (옵션: GitHub/Naver/Tistory)
-#    — 자동 생성 스크립트로 추가 가능(이미 추가됨). 글마다 '플랫폼'에서 발행 대상 선택.
-
-# 2) Playwright 브라우저 설치
-python3 -m playwright install chromium
-
-# 3) 네이버/티스토리 로그인 세션 1회 캡처 (헤드풀 브라우저 → 로그인 후 Enter)
-python3 scripts/publisher_naver.py login
-python3 scripts/publisher_tistory.py login
 ```
 
 ## 사용법

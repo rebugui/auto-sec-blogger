@@ -69,7 +69,8 @@ class AsyncLLMClient:
                 {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": self.max_tokens
+            "max_tokens": self.max_tokens,
+            "thinking": {"type": "disabled"}
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}

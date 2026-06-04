@@ -16,21 +16,11 @@ from datetime import datetime
 # 스크립트 자신의 디렉토리(scripts/)가 sys.path[0]이므로 직접 import 가능.
 from config import NOTION_API_KEY, NOTION_DATABASE_ID, BLOG_REPO_PATH, LOG_DIR
 
-# 멀티플랫폼 퍼블리셔
-import content_html
+# GitHub(Hugo) 퍼블리셔 — 네이버/티스토리는 캡차(DKAPTCHA/자동등록방지)로 자동화 불가하여 제외
 import publisher_github
-import publisher_naver
-import publisher_tistory
-from publisher_base import (
-    PublishResult, PLATFORM_GITHUB, PLATFORM_NAVER, PLATFORM_TISTORY,
-)
+from publisher_base import PLATFORM_GITHUB
 
-# 플랫폼명 → 퍼블리셔 함수
-PUBLISHERS = {
-    PLATFORM_GITHUB: publisher_github.publish,
-    PLATFORM_NAVER: publisher_naver.publish,
-    PLATFORM_TISTORY: publisher_tistory.publish,
-}
+PUBLISHERS = {PLATFORM_GITHUB: publisher_github.publish}
 
 notion_token = NOTION_API_KEY
 database_id = NOTION_DATABASE_ID          # 파이프라인과 동일 DB (INTELLIGENCE_BLOG_DATABASE_ID)
@@ -275,14 +265,11 @@ def get_approved_articles():
         # 태그 (multi_select '테그')
         tags = [t.get('name', '') for t in page['properties'].get('테그', {}).get('multi_select', [])]
 
-        # 발행 대상 플랫폼 (multi_select '플랫폼') — 비어있으면 발행하지 않음
+        # 발행 대상 플랫폼 (multi_select '플랫폼') — 비어있으면 GitHub 기본 (GitHub 전용 운영)
         platforms = [p.get('name', '') for p in page['properties'].get('플랫폼', {}).get('multi_select', [])]
+        platforms = [p for p in platforms if p] or [PLATFORM_GITHUB]
         # 이미 게시된 플랫폼 (multi_select '게시된 플랫폼') — 중복 발행 방지
         published = [p.get('name', '') for p in page['properties'].get('게시된 플랫폼', {}).get('multi_select', [])]
-
-        if not platforms:
-            log(f"  ⏭️ '플랫폼' 미선택 → 건너뜀: {title[:40]}")
-            continue
 
         articles.append({
             'title': title,
@@ -353,12 +340,9 @@ def publish_article(article, idx, total):
         log(f"    ⚠️ 본문 없음, 스킵")
         return [], False
 
-    # 네이버/티스토리용 HTML (Mermaid는 이미지로). GitHub은 markdown 사용.
-    html = content_html.to_html(markdown)
-
     newly = []
     for platform in todo:
-        result = PUBLISHERS[platform](article, markdown, html)
+        result = PUBLISHERS[platform](article, markdown, "")
         if result.ok:
             newly.append(platform)
             log(f"    ✅ {platform} 게시: {result.url or '(URL 미반환)'}")

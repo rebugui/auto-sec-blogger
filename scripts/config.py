@@ -86,11 +86,3 @@ PROJECT_DATABASE_ID = get_env("INTELLIGENCE_PROJECT_DATABASE_ID")
 GLM_BASE_URL = get_env("INTELLIGENCE_LLM_BASE_URL", "http://localhost:11434/v1/")
 GLM_MODEL = get_env("INTELLIGENCE_LLM_MODEL", "gemma4:e4b")
 
-# 멀티플랫폼 발행 (Playwright 브라우저 자동화 전용)
-# 각 플랫폼은 일회성 로그인으로 저장한 storage_state 세션 JSON을 재사용한다.
-# 네이버
-NAVER_BLOG_ID = get_env("NAVER_BLOG_ID")                  # blog.naver.com/<id>
-NAVER_STATE_PATH = get_env("NAVER_STATE_PATH", str(DATA_DIR / "naver_state.json"))
-# 티스토리
-TISTORY_BLOG_NAME = get_env("TISTORY_BLOG_NAME")          # <name>.tistory.com
-TISTORY_STATE_PATH = get_env("TISTORY_STATE_PATH", str(DATA_DIR / "tistory_state.json"))
