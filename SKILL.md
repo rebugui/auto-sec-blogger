@@ -1,7 +1,7 @@
 ---
 name: auto-sec-blogger
-version: 1.1.0
-description: AI-powered security blog automation system (identical to github.com/rebugui/auto-sec-blogger). Collects news from Google News, arXiv, HackerNews → generates blog posts with GLM-4.7 → publishes to Notion → auto-deploys to GitHub Pages via Git. Features Human-in-the-Loop approval workflow. Use when you want to automate blog writing, news collection, or content generation with the exact functionality of the original auto-sec-blogger repository. Triggers: "블로그 글 작성", "보안 뉴스 발행", "깃헙 블로그 발행", "intelligence agent", "지능형 에이전트", "자동 글쓰기".
+version: 1.2.0
+description: "AI-powered security blog automation system (identical to github.com/rebugui/auto-sec-blogger). Collects news from Google News, arXiv, HackerNews → generates blog posts with local Ollama Gemma (gemma4:e4b) → publishes to Notion → auto-deploys to GitHub Pages via Git. Features Human-in-the-Loop approval workflow. Use when you want to automate blog writing, news collection, or content generation with the exact functionality of the original auto-sec-blogger repository. Triggers: 블로그 글 작성, 보안 뉴스 발행, 깃헙 블로그 발행, intelligence agent, 지능형 에이전트, 자동 글쓰기."
 ---
 
 # Intelligence Agent
@@ -12,16 +12,57 @@ description: AI-powered security blog automation system (identical to github.com
 
 **GitHub 저장소와 동일**: https://github.com/rebugui/auto-sec-blogger
 
+## Hermes Cron Integration (Current)
+
+**Platform**: Migrated from OpenClaw to Hermes
+
+### Hermes Cron Registration
+
+Wrapper script: `~/.hermes/scripts/run-auto-sec-blogger.sh`
+
+```bash
+#!/bin/bash
+# Wrapper: run auto-sec-blogger pipeline
+SKILL_DIR="$HOME/.hermes/skills/openclaw-imports/auto-sec-blogger"
+set -a                         # ⚠️ MUST use set -a: exports all sourced vars to Python
+source "$HOME/.hermes/.skills.env" 2>/dev/null
+set +a
+cd "$SKILL_DIR"
+exec /usr/bin/python3 "$SKILL_DIR/scripts/intelligence_pipeline.py" --max-articles 3
+```
+
+**`set -a` is critical.** Without it, `source` makes vars available in bash but does NOT export them to child processes (Python). The pipeline silently fails with "API Key가 설정되지 않았습니다." errors.
+
+**Schedule**: Daily at 08:00 (`0 8 * * *`)
+**Register**: `cronjob action=create name="auto-sec-blogger" schedule="0 8 * * *" script="run-auto-sec-blogger.sh" no_agent=true`
+
+### Manual Execution
+
+```bash
+SKILL_DIR="$HOME/.hermes/skills/openclaw-imports/auto-sec-blogger"
+python3 "$SKILL_DIR/scripts/intelligence_pipeline.py" --max-articles 3
+python3 "$SKILL_DIR/scripts/intelligence_pipeline_resilient.py" --max-articles 3
+```
+
+### Legacy Pipeline (국내 보안뉴스 중심, security-news-feed 의존)
+
+```bash
+SKILL_DIR="$HOME/.hermes/skills/openclaw-imports/auto-sec-blogger"
+python3 "$SKILL_DIR/scripts/run_pipeline.py" --full
+```
+
+---
+
 ## 아키텍처
 
 ```
-뉴스 수집 (Google News, arXiv, HackerNews)
+뉴스 수집 (Google News, arXiv, HackerNews, Hada.io)
     ↓
-GLM-4.7 글 작성 (전문 보안 블로그)
+Ollama Gemma4:e4b (local 8B) 기사 선별 + 글 작성
     ↓
 Notion Draft 저장 (상태: Draft)
     ↓
-사용자 검토 및 승인 (Human-in-the-Loop)
+사용자 검토 및 승인 (Human-in-the-Loop, Notion 상태 변경)
     ↓
 Git Push → GitHub Actions → GitHub Pages
 ```
@@ -35,15 +76,14 @@ Git Push → GitHub Actions → GitHub Pages
 - **중복 제거**: URL 기반 중복 뉴스 필터링
 
 ### 2. LLM 글쓰기 (Content Generation)
-- **모델**: GLM-4.7 (Zhipu AI)
-- **스타일**: 전문 보안 블로그
+- **모델**: Ollama Gemma4:e4b (local 8B, Q4_K_M)
+- **스타일**: 전문 보안 블로그 (멀티 페르소나: 보안, AI, DevOps, CVE 분석가)
 - **구조**:
   - 제목 (헤드라인)
   - 요약 (3줄 요약)
   - 본문 (상세 분석)
   - 결론 (시사점)
   - 태그 (키워드)
-- **Mermaid 다이어그램**: 공격 흐름, 아키텍처 시각화
 
 ### 3. Notion 통합 (Notion Integration)
 - **상태 관리**: Draft → Review → Approved → Published
@@ -55,41 +95,36 @@ Git Push → GitHub Actions → GitHub Pages
 - **Hugo 빌드**: 정적 블로그용 마크다운 생성
 - **GitHub Pages**: 정적 블로그 배포
 
-## 설치
+## LLM Configuration (Current — Ollama Local)
 
-### 1. 의존성 설치
+**Model**: Gemma4:e4b (8B, Q4_K_M) via local Ollama
+**Base URL**: `http://localhost:11434/v1/`
+**API Key**: Not required (Ollama local). Set `INTELLIGENCE_LLM_API_KEY=ollama` for non-empty check.
+**Config**: `scripts/config.py` — `GLM_API_KEY = get_env("INTELLIGENCE_LLM_API_KEY") or "ollama"`
+
+### LLM Client Settings (2026-06-01 updated)
+
+| Parameter | Before | After | Reason |
+|-----------|--------|-------|--------|
+| `timeout` | 300s | 600s | Ollama 8B can take 5+ min for long content |
+| `max_tokens` | 4000 | 2000 | Shorter articles = faster generation, stays within timeout |
+
+### Environment Variables
 
 ```bash
-cd ~/.openclaw/workspace/skills/auto-sec-blogger/scripts
-pip3 install -r requirements.txt
-```
-
-### 2. 환경 변수 설정
-
-```bash
-# ~/.openclaw/workspace/.env
-
-# GLM API
-GLM_API_KEY=your_glm_api_key
-GLM_BASE_URL=https://api.z.ai/api/coding/paas/v4
-
-# Notion
-NOTION_API_KEY=ntn_xxx
-NOTION_DATABASE_ID=xxx
-
-# GitHub Pages
-GITHUB_TOKEN=ghp_xxx
-GITHUB_BLOG_REPO=username/username.github.io
-BLOG_LOCAL_PATH=/path/to/blog/repo
+# ~/.hermes/.skills.env
+INTELLIGENCE_LLM_API_KEY=ollama           # Ollama local (any non-empty value works)
+INTELLIGENCE_LLM_BASE_URL=http://localhost:11434/v1/
+INTELLIGENCE_LLM_MODEL=gemma4:e4b
 ```
 
 ## 사용법
 
-### 1. 전체 파이프라인 실행 (테스트용)
+### 1. 전체 파이프라인 실행
 
 ```bash
-cd ~/.openclaw/workspace/skills/auto-sec-blogger/scripts
-python3 intelligence_pipeline.py --max-articles 5
+SKILL_DIR="$HOME/.hermes/skills/openclaw-imports/auto-sec-blogger"
+python3 "$SKILL_DIR/scripts/intelligence_pipeline.py" --max-articles 3
 ```
 
 ### 2. 뉴스 수집만
@@ -98,7 +133,7 @@ python3 intelligence_pipeline.py --max-articles 5
 from collector import NewsCollector
 
 collector = NewsCollector()
-articles = collector.fetch_all(max_results_per_source=15)
+articles = collector.fetch_all(max_results_per_source=8)
 ```
 
 ### 3. 블로그 글 작성만
@@ -240,39 +275,28 @@ blog/
         └── hugo.yml
 ```
 
-## 트러블슈팅
+## Pitfalls
 
-### GLM API Rate Limit
-
-```
-❌ Error: Rate limit reached (429)
-```
-
-**해결**:
-- 자동 재시도 3회
-- 60초 대기 후 재시도
-
-### Notion API Error
-
-```
-❌ Error: Notion API error
-```
-
-**해결**:
-- API 키 확인
-- Database ID 확인
-- Integration 권한 확인
-
-### Git Push 실패
-
-```
-❌ Error: Git push failed
-```
-
-**해결**:
-- GitHub Token 확인
-- 원격 저장소 권한 확인
-- 브랜치 확인
+1. **GLM_API_KEY must be non-empty**: Even though Ollama doesn't need auth, the llm_client_async.py raises ValueError if api_key is empty. Set `INTELLIGENCE_LLM_API_KEY=ollama` or ensure config.py default is non-empty.
+2. **Cron no_agent timeout**: Default is 120s. auto-sec-blogger pipeline takes ~6-7 min. Set `cron.script_timeout_seconds: 600` in config.yaml.
+3. **Ollama inference is slow**: Local 8B Gemma model takes 30-40s PER LLM call, not 10-30s. Pipeline timing budget:
+   - Collector: ~10s for 40 articles (max_results_per_source=8)
+   - Selector: ~40s per category × 3-4 categories = ~120-160s
+   - Writer: ~35-40s per call × 2 calls per article (metadata + content)
+   - Total for 3 articles: ~10 + 140 + 240 = ~390s minimum
+   - **Never use --max-articles 5 with Ollama local** — exceeds 600s timeout
+4. **Pydantic score validation**: `models.py` `EvaluationItem.score` was `int` type but LLM returns floats like 8.5. Changed to `float` — if you revert this, the selector silently drops entire categories.
+5. **LLM client timeout**: `llm_client_async.py` timeout was 300s (5min) but Ollama content generation for 4000 tokens can exceed this. Fixed: timeout=600s, max_tokens=2000. If you increase max_tokens back to 4000, also increase timeout.
+6. **max_results_per_source**: Setting this too high (was 15, now 8) floods the selector with 79+ articles, creating many categories and LLM calls. Keep at 5-8 for reliable 600s completion.
+7. **Diagnosing cron failures**: When pipeline times out, check in order:
+   1. `cronjob action=list` — check `last_status`
+   2. `~/.hermes/cron/output/<job_id>/<date>.md` — shows script exit/timeout
+   3. `skil_dir/logs/pipeline.log` — trace which step failed
+   4. `skill_dir/logs/selector.log`, `writer.log`, `llm_client_async.log` — deeper trace
+   5. Run manually with wrapper to reproduce: `bash ~/.hermes/scripts/run-auto-sec-blogger.sh`
+8. **Python buffering**: When running via cron wrapper, output may buffer. Use `PYTHONUNBUFFERED=1` for real-time log visibility.
+9. **`set -a` before sourcing .env in wrapper scripts**: Plain `source .skills.env` without `set -a` loads variables into bash but does NOT export them to child processes. Python scripts see empty env vars. Always use `set -a; source .env; set +a` pattern in wrapper scripts.
+10. **selector Pydantic float score**: `models.py` `score` field was `int` type, but Gemma returns floats like `8.5`. Changed to `float`. If you regenerate `models.py` or upgrade the skill, make sure this field stays `float` — `int` silently drops entire categories from selection.
 
 ## 파일 구조
 
@@ -357,3 +381,4 @@ python3 test_mermaid_fix.py
 
 ### references/
 - `architecture.md` - 상세 아키텍처 설명
+- `pipeline-timing-diagnosis.md` - 2026-06-01 파이프라인 타임아웃 원인 분석 및 수정 기록

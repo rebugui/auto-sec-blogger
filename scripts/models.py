@@ -8,7 +8,7 @@ from typing import List, Optional
 
 class EvaluationItem(BaseModel):
     id: int = Field(..., description="기사 ID")
-    score: int = Field(..., ge=1, le=10, description="평가 점수 (1-10)")
+    score: float = Field(..., ge=1, le=10, description="평가 점수 (1-10)")
     reason: str = Field(..., description="선별 이유")
 
 class EvaluationResponse(BaseModel):

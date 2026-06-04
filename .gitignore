@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 런타임 산출물 (커밋 금지)
+*.db
+logs/
+data/
+*.log
+
+# 에이전트/세션 상태
+.omc/
+scripts/.omc/
+*.jsonl
+
+# OS
+.DS_Store

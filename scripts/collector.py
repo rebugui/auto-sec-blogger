@@ -148,7 +148,9 @@ class NewsCollector:
                     sort_by=arxiv.SortCriterion.SubmittedDate
                 )
 
-                for result in search.results():
+                # page_size를 max_results로 제한(기본 100 → 429 유발) + 정중한 지연/재시도로 rate-limit 회피
+                client = arxiv.Client(page_size=max_results, delay_seconds=3.0, num_retries=3)
+                for result in client.results(search):
                     if self.is_seen(result.entry_id):
                         continue
 
@@ -289,7 +291,8 @@ class NewsCollector:
 
         all_articles.extend(self.fetch_hackernews(max_results=max_results_per_source))
         all_articles.extend(self.fetch_hadaio(max_results=max_results_per_source))
-        all_articles.extend(self.fetch_geeknews(max_results=max_results_per_source))
+        # NOTE: fetch_geeknews는 현재 fetch_hadaio의 별칭이라 동일 소스 이중 수집을 유발 →
+        #       중복 수집 호출 제거(2차 호출은 seen 추적상 항상 0건이라 무의미).
 
         all_articles.sort(key=lambda x: x["published"], reverse=True)
         return all_articles

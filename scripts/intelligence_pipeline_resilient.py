@@ -29,7 +29,7 @@ async def run_pipeline_async_resilient(max_articles: int = 5):
         logger.info("  - Fetching Google News...")
         try:
             for keyword in ["Vulnerability", "Security", "Cybersecurity"]:
-                articles = collector.fetch_google_news(keyword, max_results_per_source=15)
+                articles = collector.fetch_google_news(keyword, max_results_per_source=8)
                 raw_articles.extend(articles)
             logger.info(f"  → Google News: {len(articles)} articles")
         except Exception as e:
@@ -38,7 +38,7 @@ async def run_pipeline_async_resilient(max_articles: int = 5):
         # arXiv 수집 (rate limit 시 건너뛰기)
         logger.info("  - Fetching arXiv papers...")
         try:
-            arxiv_articles = collector.fetch_arxiv(max_results=15)
+            arxiv_articles = collector.fetch_arxiv(max_results=8)
             raw_articles.extend(arxiv_articles)
             logger.info(f"  → arXiv: {len(arxiv_articles)} articles")
         except Exception as e:
@@ -47,7 +47,7 @@ async def run_pipeline_async_resilient(max_articles: int = 5):
         # HackerNews 수집
         logger.info("  - Fetching HackerNews...")
         try:
-            hn_articles = collector.fetch_hackernews(max_results=15)
+            hn_articles = collector.fetch_hackernews(max_results=8)
             raw_articles.extend(hn_articles)
             logger.info(f"  → HackerNews: {len(hn_articles)} articles")
         except Exception as e:

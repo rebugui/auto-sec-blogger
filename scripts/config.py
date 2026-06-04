@@ -14,7 +14,7 @@ CURRENT_DIR = Path(__file__).resolve().parent
 
 # 환경 변수로 지정된 PROJECT_ROOT 사용 (우선)
 # 또는 절대 경로로 직접 설정
-PROJECT_ROOT = Path(os.getenv("OPENCLAW_ROOT", "/Users/rebugui/.openclaw/workspace"))
+PROJECT_ROOT = Path(os.getenv("OPENCLAW_ROOT", Path.home() / ".hermes" / "skills" / "openclaw-imports" / "auto-sec-blogger"))
 
 # PROJECT_ROOT가 존재하는지 확인
 if not PROJECT_ROOT.exists():
@@ -52,6 +52,13 @@ else:
     if local_env.exists():
         load_dotenv(local_env, override=True)
 
+# Hermes 공용 시크릿(.skills.env) 폴백 로드.
+# 래퍼 스크립트(set -a; source) 없이 직접 실행해도 NOTION_API_KEY 등이 해석되도록 보강.
+# override=False: 이미 환경에 있으면(래퍼 경유 등) 그 값을 유지.
+skills_env = Path.home() / ".hermes" / ".skills.env"
+if skills_env.exists():
+    load_dotenv(skills_env, override=False)
+
 # 3. 설정 값 가져오기
 def get_env(key: str, default: str = None) -> str:
     """환경 변수 가져오기"""
@@ -59,7 +66,7 @@ def get_env(key: str, default: str = None) -> str:
 
 # API Keys (Intelligence Agent)
 OPENAI_API_KEY = get_env("INTELLIGENCE_OPENAI_API_KEY")
-GLM_API_KEY = get_env("INTELLIGENCE_LLM_API_KEY") or get_env("INTELLIGENCE_GLM_API_KEY") or get_env("GLM_API_KEY")
+GLM_API_KEY = get_env("INTELLIGENCE_LLM_API_KEY") or "ollama"  # Ollama local (free, no API cost)
 NOTION_API_KEY = get_env("INTELLIGENCE_NOTION_TOKEN") or get_env("NOTION_API_KEY")
 
 # Blog Config
@@ -75,6 +82,6 @@ NOTION_DATABASE_ID = get_env("INTELLIGENCE_BLOG_DATABASE_ID")
 # Project Database ID (Intelligence Agent)
 PROJECT_DATABASE_ID = get_env("INTELLIGENCE_PROJECT_DATABASE_ID")
 
-# LLM Config
-GLM_BASE_URL = get_env("INTELLIGENCE_LLM_BASE_URL", "https://api.z.ai/api/coding/paas/v4/")
-GLM_MODEL = get_env("INTELLIGENCE_LLM_MODEL", "glm-4.7")
+# LLM Config (Ollama Local)
+GLM_BASE_URL = get_env("INTELLIGENCE_LLM_BASE_URL", "http://localhost:11434/v1/")
+GLM_MODEL = get_env("INTELLIGENCE_LLM_MODEL", "gemma4:e4b")

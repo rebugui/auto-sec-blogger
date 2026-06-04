@@ -23,7 +23,7 @@ async def run_pipeline_async(max_articles: int = 5):
         # Collector는 동기식이므로 그대로 실행 (추후 비동기화 가능)
         logger.info("[1/4] Collecting news from various sources...")
         collector = NewsCollector()
-        raw_articles = collector.fetch_all(max_results_per_source=15)
+        raw_articles = collector.fetch_all(max_results_per_source=8)
         
         if not raw_articles:
             logger.info("No new articles found. Terminating pipeline.")

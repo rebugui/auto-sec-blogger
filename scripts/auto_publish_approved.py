@@ -12,18 +12,26 @@ import urllib.request
 import subprocess
 from pathlib import Path
 from datetime import datetime
-from dotenv import load_dotenv
 
-# .env 로드
-load_dotenv('/Users/rebugui/.openclaw/workspace/.env')
+# 설정은 config.py로 단일화 (config가 ~/.hermes/.skills.env까지 폴백 로드).
+# 스크립트 자신의 디렉토리(scripts/)가 sys.path[0]이므로 직접 import 가능.
+from config import NOTION_API_KEY, NOTION_DATABASE_ID, BLOG_REPO_PATH, LOG_DIR
 
-notion_token = os.getenv('NOTION_API_KEY')
-database_id = os.getenv('BLOG_DATABASE_ID')
-blog_path = Path.home() / '.openclaw' / 'workspace' / 'blog'
+notion_token = NOTION_API_KEY
+database_id = NOTION_DATABASE_ID          # 파이프라인과 동일 DB (INTELLIGENCE_BLOG_DATABASE_ID)
+blog_path = Path(BLOG_REPO_PATH)          # 하드코딩 제거 → .skills.env의 BLOG_REPO_PATH 사용
 posts_dir = blog_path / 'content' / 'post'
 
-# 로그 파일
-log_file = Path.home() / '.openclaw' / 'logs' / 'auto-publish-approved.log'
+# 발행 대상 상태: 기본 '검토 완료'(사람이 Notion에서 검토 후 승인한 글만 발행).
+#   파이프라인은 새 글을 '검토중'까지만 만들고, 사람이 '검토 완료'로 올린 것만 게시됨.
+#   (완전 자동발행을 원하면 .skills.env에 AUTO_PUBLISH_STATUS="검토중" 설정)
+PUBLISH_STATUS = os.getenv('AUTO_PUBLISH_STATUS', '검토 완료')
+
+# 1회 실행당 발행 상한 (백로그 대량 일괄 발행/중복 게시 방지). 최신순으로 N건만.
+AUTO_PUBLISH_MAX = int(os.getenv('AUTO_PUBLISH_MAX', '5'))
+
+# 로그 파일 (스킬 logs 디렉토리로 통일)
+log_file = LOG_DIR / 'auto-publish-approved.log'
 
 
 def log(message):
@@ -211,12 +219,12 @@ def fetch_page_content(page_id):
 
 
 def get_approved_articles():
-    """Notion에서 "검토 완료" 상태인 글 조회"""
+    """Notion에서 발행 대상 상태(PUBLISH_STATUS)인 글 조회"""
     query_url = f"https://api.notion.com/v1/databases/{database_id}/query"
     payload = {
         "filter": {
             "property": "상태",
-            "status": {"equals": "검토 완료"}
+            "status": {"equals": PUBLISH_STATUS}
         },
         "sorts": [{"timestamp": "created_time", "direction": "descending"}],
         "page_size": 50
@@ -227,7 +235,7 @@ def get_approved_articles():
         return []
 
     results = data.get('results', [])
-    log(f"📊 '검토 완료' 상태인 글: {len(results)}개 발견")
+    log(f"📊 '{PUBLISH_STATUS}' 상태인 글: {len(results)}개 발견")
 
     articles = []
     for page in results:
@@ -255,6 +263,11 @@ def get_approved_articles():
             'url': url,
             'page_id': page['id']
         })
+
+    # 1회 발행 상한 적용 (최신순 상위 N건만)
+    if len(articles) > AUTO_PUBLISH_MAX:
+        log(f"발행 상한 적용: {len(articles)}건 중 최신 {AUTO_PUBLISH_MAX}건만 처리")
+        articles = articles[:AUTO_PUBLISH_MAX]
 
     return articles
 

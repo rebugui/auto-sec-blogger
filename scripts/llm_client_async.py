@@ -25,7 +25,10 @@ class AsyncLLMClient:
         self.api_key = api_key or GLM_API_KEY
         self.base_url = base_url or GLM_BASE_URL
         self.model = model or GLM_MODEL
-        self.timeout = 300  # 5분
+        self.timeout = 600  # 10분
+
+        # gemma4 thinking 모드 대응: 토큰 4배 증가
+        self.max_tokens = 8000  # thinking + JSON 응답 충분히 확보
 
         if not self.api_key:
             logger.warning("GLM_API_KEY is not set.")
@@ -44,8 +47,12 @@ class AsyncLLMClient:
         delay = min(self.BASE_DELAY * (2 ** attempt) + random.uniform(0, 1), self.MAX_DELAY)
         return delay
 
-    async def chat(self, system_prompt: str, user_prompt: str) -> str:
-        """GLM API 비동기 호출 (재시도 로직 포함)"""
+    async def chat(self, system_prompt: str, user_prompt: str, json_mode: bool = False) -> str:
+        """GLM API 비동기 호출 (재시도 로직 포함)
+
+        json_mode=True 시 OpenAI 호환 response_format으로 유효한 JSON 출력을 강제.
+        (Ollama 제약 디코딩 → thinking 토큰/마크다운 혼입 및 truncation 파싱 실패 방지)
+        """
         if not self.api_key:
             raise ValueError("API Key가 설정되지 않았습니다.")
 
@@ -62,8 +69,10 @@ class AsyncLLMClient:
                 {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 4000
+            "max_tokens": self.max_tokens
         }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
 
         url = self._get_url()
         last_error = None
