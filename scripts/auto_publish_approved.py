@@ -251,7 +251,7 @@ def get_approved_articles():
             title = title_prop['title'][0]['plain_text']
 
         # 카테고리 추출
-        category = "security"
+        category = "보안"
         category_prop = page['properties'].get('카테고리')
         if category_prop and category_prop.get('select'):
             category = category_prop['select']['name']

@@ -18,6 +18,23 @@ logger = setup_logger(__name__, "auto-publish-approved.log")
 blog_path = Path(BLOG_REPO_PATH)
 posts_dir = blog_path / "content" / "post"
 
+# 표준 카테고리 폴더/분류 일관성: 영문·변형 → 표준 한글, 빈 값 → 보안
+CATEGORY_NORMALIZE = {
+    "security": "보안", "Security": "보안", "보안": "보안",
+    "vulnerability": "보안", "Vulnerability": "보안",
+    "AI": "AI", "ai": "AI",
+    "DevOps": "DevOps", "devops": "DevOps", "Dev": "DevOps",
+    "인프라": "DevOps", "System": "DevOps",
+    "CVE": "CVE", "cve": "CVE",
+    "IT": "IT",
+    "가이드라인": "가이드라인",
+}
+
+
+def _norm_category(cat) -> str:
+    cat = (cat or "").strip()
+    return CATEGORY_NORMALIZE.get(cat, cat or "보안")
+
 
 def sanitize_filename(title: str) -> str:
     """파일명/슬러그로 사용 가능한 문자열로 변환 (auto_publish_approved와 동일 규칙)."""
@@ -29,7 +46,7 @@ def sanitize_filename(title: str) -> str:
 def post_exists(article: dict) -> bool:
     """이미 동일 슬러그의 Hugo 포스트가 있는지."""
     slug = sanitize_filename(article["title"])
-    return (posts_dir / article["category"] / slug / "index.md").exists()
+    return (posts_dir / _norm_category(article["category"]) / slug / "index.md").exists()
 
 
 def _create_hugo_post(article: dict, markdown: str) -> str:
@@ -37,7 +54,7 @@ def _create_hugo_post(article: dict, markdown: str) -> str:
     date_str = datetime.now().strftime("%Y-%m-%d")
     time_str = datetime.now().strftime("%H:%M:%S")
     slug = sanitize_filename(article["title"])
-    category = article["category"]
+    category = _norm_category(article["category"])
 
     post_dir = posts_dir / category / slug
     post_dir.mkdir(parents=True, exist_ok=True)
