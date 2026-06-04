@@ -23,11 +23,13 @@ logger = setup_logger(__name__, "auto-publish-approved.log")
 WRITE_URL = "https://blog.naver.com/PostWriteForm.naver"
 
 
-def capture_login() -> None:
-    browser_session.capture_login(
+def capture_login() -> bool:
+    # 로그인 성공 시 .naver.com에 NID_SES/NID_AUT 쿠키가 설정됨
+    return browser_session.capture_login(
         NAVER_STATE_PATH,
         "https://nid.naver.com/nidlogin.login",
-        hint="네이버 로그인을 완료",
+        success_cookies=["NID_SES", "NID_AUT"],
+        hint="네이버 로그인",
     )
 
 
