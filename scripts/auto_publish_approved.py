@@ -9,13 +9,28 @@ import sys
 import re
 import json
 import urllib.request
-import subprocess
 from pathlib import Path
 from datetime import datetime
 
 # 설정은 config.py로 단일화 (config가 ~/.hermes/.skills.env까지 폴백 로드).
 # 스크립트 자신의 디렉토리(scripts/)가 sys.path[0]이므로 직접 import 가능.
 from config import NOTION_API_KEY, NOTION_DATABASE_ID, BLOG_REPO_PATH, LOG_DIR
+
+# 멀티플랫폼 퍼블리셔
+import content_html
+import publisher_github
+import publisher_naver
+import publisher_tistory
+from publisher_base import (
+    PublishResult, PLATFORM_GITHUB, PLATFORM_NAVER, PLATFORM_TISTORY,
+)
+
+# 플랫폼명 → 퍼블리셔 함수
+PUBLISHERS = {
+    PLATFORM_GITHUB: publisher_github.publish,
+    PLATFORM_NAVER: publisher_naver.publish,
+    PLATFORM_TISTORY: publisher_tistory.publish,
+}
 
 notion_token = NOTION_API_KEY
 database_id = NOTION_DATABASE_ID          # 파이프라인과 동일 DB (INTELLIGENCE_BLOG_DATABASE_ID)
@@ -257,11 +272,26 @@ def get_approved_articles():
         if url_prop and url_prop.get('url'):
             url = url_prop['url']
 
+        # 태그 (multi_select '테그')
+        tags = [t.get('name', '') for t in page['properties'].get('테그', {}).get('multi_select', [])]
+
+        # 발행 대상 플랫폼 (multi_select '플랫폼') — 비어있으면 발행하지 않음
+        platforms = [p.get('name', '') for p in page['properties'].get('플랫폼', {}).get('multi_select', [])]
+        # 이미 게시된 플랫폼 (multi_select '게시된 플랫폼') — 중복 발행 방지
+        published = [p.get('name', '') for p in page['properties'].get('게시된 플랫폼', {}).get('multi_select', [])]
+
+        if not platforms:
+            log(f"  ⏭️ '플랫폼' 미선택 → 건너뜀: {title[:40]}")
+            continue
+
         articles.append({
             'title': title,
             'category': category,
             'url': url,
-            'page_id': page['id']
+            'tags': [t for t in tags if t],
+            'platforms': [p for p in platforms if p],
+            'published_platforms': [p for p in published if p],
+            'page_id': page['id'],
         })
 
     # 1회 발행 상한 적용 (최신순 상위 N건만)
@@ -272,44 +302,23 @@ def get_approved_articles():
     return articles
 
 
-def sanitize_filename(title):
-    """파일명으로 사용 가능한 문자열로 변환"""
-    filename = re.sub(r'[^\w\s-]', '', title)
-    filename = re.sub(r'[\s]+', '-', filename)
-    return filename[:100]
+def update_published_platforms(page_id, platforms):
+    """'게시된 플랫폼' multi_select 갱신 (idempotency 기록)."""
+    url = f"https://api.notion.com/v1/pages/{page_id}"
+    body = {
+        "properties": {
+            "게시된 플랫폼": {"multi_select": [{"name": p} for p in sorted(set(platforms))]}
+        }
+    }
+    return notion_request(url, method='PATCH', body=body) is not None
 
 
-def create_hugo_post(article, content):
-    """Hugo 마크다운 포스트 생성"""
-    date_str = datetime.now().strftime('%Y-%m-%d')
-    time_str = datetime.now().strftime('%H:%M:%S')
-    filename_slug = sanitize_filename(article['title'])
-
-    category = article['category']
-    post_dir = posts_dir / category / filename_slug
-    post_dir.mkdir(parents=True, exist_ok=True)
-    filepath = post_dir / 'index.md'
-
-    front_matter = f"""---
-title: "{article['title']}"
-date: {date_str}T{time_str}+09:00
-draft: false
-categories: ["{category}"]
-tags: ["{category}"]
-author: "Intelligence Agent"
----
-
-"""
-
-    # 출처 추가
-    source = ""
-    if article['url']:
-        source = f"\n\n---\n\n**출처**: [{article['url']}]({article['url']})"
-
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(front_matter + content + source)
-
-    return f"{category}/{filename_slug}/index.md"
+def update_deploy_url(page_id, url_value):
+    """'배포 URL' 기록 (best-effort — 속성 없으면 무시)."""
+    if not url_value:
+        return
+    api = f"https://api.notion.com/v1/pages/{page_id}"
+    notion_request(api, method='PATCH', body={"properties": {"배포 URL": {"url": url_value}}})
 
 
 def update_notion_status(page_id, status_name="게시 완료"):
@@ -324,96 +333,68 @@ def update_notion_status(page_id, status_name="게시 완료"):
     return data is not None
 
 
-def mark_existing_as_published(articles):
-    """이미 Hugo에 존재하는 글은 Notion 상태를 '게시 완료'로 업데이트"""
-    updated = 0
-    for article in articles:
-        slug = sanitize_filename(article['title'])
-        filepath = posts_dir / article['category'] / slug / 'index.md'
-        if filepath.exists():
-            if update_notion_status(article['page_id']):
-                log(f"  ✅ 상태 업데이트: {article['title'][:50]}")
-                updated += 1
-    return updated
+def publish_article(article, idx, total):
+    """단일 글을 선택된(미게시) 플랫폼들에 발행. (newly_published, all_done) 반환."""
+    title = article['title']
+    requested = [p for p in article['platforms'] if p in PUBLISHERS]
+    already = set(article['published_platforms'])
+    todo = [p for p in requested if p not in already]
 
+    if not requested:
+        log(f"  [{idx}/{total}] ⏭️ 지원 플랫폼 없음({article['platforms']}): {title[:40]}")
+        return [], False
+    if not todo:
+        log(f"  [{idx}/{total}] ✅ 이미 모두 게시됨: {title[:40]}")
+        return [], True
 
-def git_commit_and_push(filenames):
-    """Git commit & push"""
-    try:
-        for filename in filenames:
-            filepath = posts_dir / filename
-            subprocess.run(['git', 'add', str(filepath)], cwd=blog_path, check=True, capture_output=True)
+    log(f"  [{idx}/{total}] 📥 본문 수집: {title[:45]} → 대상 {todo}")
+    markdown = fetch_page_content(article['page_id'])
+    if not markdown:
+        log(f"    ⚠️ 본문 없음, 스킵")
+        return [], False
 
-        commit_msg = f"feat: 블로그 글 추가 - {len(filenames)}개 ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
-        subprocess.run(['git', 'commit', '-m', commit_msg], cwd=blog_path, check=True, capture_output=True)
-        subprocess.run(['git', 'pull', '--rebase', 'origin', 'main'], cwd=blog_path, check=True, capture_output=True)
-        subprocess.run(['git', 'push', 'origin', 'main'], cwd=blog_path, check=True, capture_output=True)
+    # 네이버/티스토리용 HTML (Mermaid는 이미지로). GitHub은 markdown 사용.
+    html = content_html.to_html(markdown)
 
-        log(f"✅ Git push 완료: {len(filenames)}개 포스트")
-        return True
+    newly = []
+    for platform in todo:
+        result = PUBLISHERS[platform](article, markdown, html)
+        if result.ok:
+            newly.append(platform)
+            log(f"    ✅ {platform} 게시: {result.url or '(URL 미반환)'}")
+            update_deploy_url(article['page_id'], result.url)
+        else:
+            log(f"    ❌ {platform} 실패: {result.error}")
 
-    except subprocess.CalledProcessError as e:
-        log(f"❌ Git 작업 실패: {e}")
-        return False
+    if newly:
+        update_published_platforms(article['page_id'], already | set(newly))
+
+    all_done = set(requested) <= (already | set(newly))
+    return newly, all_done
 
 
 def main():
     log("=" * 70)
-    log("🚀 Auto-Sec-Blogger 자동 발행 시작")
+    log("🚀 Auto-Sec-Blogger 멀티플랫폼 발행 시작")
     log("=" * 70)
 
-    # 1. "검토 완료" 상태인 글 조회
     articles = get_approved_articles()
-
     if not articles:
         log("📭 발행할 글이 없습니다.")
         return
 
-    # 2. 이미 Hugo에 존재하는 글 → Notion 상태 "게시 완료"로 동기화
-    log(f"\n🔄 이미 발행된 글 상태 동기화 중...")
-    synced = mark_existing_as_published(articles)
-    if synced > 0:
-        log(f"  ✅ {synced}건 → 게시 완료")
-
-    # 3. 새 Hugo 포스트 생성 (Notion 본문 포함)
-    log(f"\n📝 Hugo 포스트 생성 중...")
-    filenames = []
-    page_ids_to_update = []
+    total = len(articles)
+    published_count = 0
     for i, article in enumerate(articles, 1):
-        title = article['title']
-        slug = sanitize_filename(title)
-        filepath = posts_dir / article['category'] / slug / 'index.md'
-
-        if filepath.exists():
-            log(f"  [{i}/{len(articles)}] ⏭️ 이미 존재: {title[:50]}")
-            continue
-
-        # Notion에서 본문 가져오기
-        log(f"  [{i}/{len(articles)}] 📥 본문 수집: {title[:50]}")
-        content = fetch_page_content(article['page_id'])
-        if not content:
-            log(f"    ⚠️ 본문 없음, 스킵: {title[:50]}")
-            continue
-
-        try:
-            filename = create_hugo_post(article, content)
-            filenames.append(filename)
-            page_ids_to_update.append(article['page_id'])
-            log(f"    ✅ 생성: {filename} ({len(content)}자)")
-        except Exception as e:
-            log(f"    ❌ 실패: {str(e)[:50]}")
-
-    # 4. Git commit & push → 상태 업데이트
-    if filenames:
-        log(f"\n🔄 Git commit & push 중...")
-        if git_commit_and_push(filenames):
-            for pid in page_ids_to_update:
-                update_notion_status(pid)
-    else:
-        log("\n📭 새로 발행할 글이 없습니다")
+        newly, all_done = publish_article(article, i, total)
+        published_count += len(newly)
+        # 요청한 플랫폼 전부 게시 완료된 경우에만 상태 전환 (부분 실패는 다음 run 재시도)
+        if all_done:
+            update_notion_status(article['page_id'], "게시 완료")
+            log(f"    🏁 상태 → 게시 완료")
 
     log("\n" + "=" * 70)
-    log("✅ 자동 발행 완료")
+    log(f"✅ 자동 발행 완료 (신규 게시 {published_count}건)")
     log("=" * 70)
 
 
