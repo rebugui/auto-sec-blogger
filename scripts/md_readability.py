@@ -67,12 +67,13 @@ def _split_ordered(line: str):
 
 
 def _quote_if_paren(inner: str, open_c: str, close_c: str):
-    """라벨 텍스트에 괄호가 있고 따옴표로 안 감싸졌으면 따옴표로 감싼 형태 반환, 아니면 None."""
-    if "(" not in inner and ")" not in inner:
-        return None
-    if inner.lstrip().startswith('"'):
-        return None
-    return f'{open_c}"{inner}"{close_c}'
+    """라벨 텍스트에 괄호/특수문자가 있고 따옴표로 안 감싸졌으면 따옴표로 감싼 형태 반환, 아니면 None."""
+    # Mermaid parse error를 일으키는 문자들
+    if any(ch in inner for ch in ['(', ')', '&', '<', '>', '#']):
+        if inner.lstrip().startswith('"'):
+            return None
+        return f'{open_c}"{inner}"{close_c}'
+    return None
 
 
 def _q_bracket(m):
